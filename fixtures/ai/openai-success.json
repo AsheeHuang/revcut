@@ -1,0 +1,42 @@
+{
+  "id": "resp_fixture",
+  "object": "response",
+  "created_at": 1761321600,
+  "status": "completed",
+  "model": "gpt-6-astra",
+  "output": [
+    {
+      "type": "reasoning",
+      "id": "rs_fixture",
+      "summary": []
+    },
+    {
+      "type": "message",
+      "id": "msg_fixture",
+      "role": "assistant",
+      "status": "completed",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "{\"media\": [{\"ref\": \"m1\", \"usable\": true, \"score\": 7, \"description\": \"海邊的夕陽\", \"moments\": [{\"t\": 0, \"score\": 7, \"focusX\": 0.5, \"focusY\": 0.4}], \"duplicateOf\": null}, {\"ref\": \"m2\", \"usable\": true, \"score\": 8, \"description\": \"兩個朋友在公園奔跑\", \"moments\": [{\"t\": 1.2, \"score\": 8, \"focusX\": 0.45, \"focusY\": 0.5}, {\"t\": 4.8, \"score\": 6, \"focusX\": 0.6, \"focusY\": 0.55}], \"duplicateOf\": null}]}",
+          "annotations": [],
+          "logprobs": []
+        }
+      ]
+    }
+  ],
+  "incomplete_details": null,
+  "error": null,
+  "usage": {
+    "input_tokens": 12000,
+    "input_tokens_details": {
+      "cached_tokens": 2000,
+      "cache_write_tokens": 0
+    },
+    "output_tokens": 2500,
+    "output_tokens_details": {
+      "reasoning_tokens": 2100
+    },
+    "total_tokens": 14500
+  }
+}
