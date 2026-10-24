@@ -38,6 +38,12 @@ function defaultAnalysis(media: PlannerMedia): PlannerAnalysis {
   return { usable: true, score: DEFAULT_SCORE, moments: [{ t, score: DEFAULT_SCORE, focusX: 0.5, focusY: 0.5 }], duplicateOf: null };
 }
 
+// SPEC §8.2 step 3: the best-scored moment first; media without one is framed on its center.
+export function rankedMoments(media: PlannerMedia): Moment[] {
+  const moments = [...(media.analysis ?? defaultAnalysis(media)).moments].sort((a, b) => b.score - a.score || a.t - b.t);
+  return moments.length > 0 ? moments : defaultAnalysis(media).moments;
+}
+
 function chooseSection({ beats, downbeatIndices, energy }: PlannerTrack, startBeat: number | undefined): Section | PlanError {
   const shape = barShape(beats, downbeatIndices);
   if (!shape) return 'NO_DOWNBEATS';
@@ -102,8 +108,8 @@ export function plan(input: PlanInput, seed: number): PlanResult {
     const analysis = media.analysis ?? defaultAnalysis(media);
     const cap = capFor(media);
     if (!analysis.usable || (analysis.duplicateOf !== null && ids.has(analysis.duplicateOf)) || cap < minBeats) continue;
-    const moments = [...analysis.moments].sort((a, b) => b.score - a.score || a.t - b.t);
-    const best = moments[0] ?? defaultAnalysis(media).moments[0]!;
+    const moments = rankedMoments(media);
+    const best = moments[0]!;
     firsts.push({ media, moment: best, score: analysis.score, maxBeats: cap, rank });
     const second = media.kind === 'video' ? moments.find((m) => Math.abs(m.t - best.t) >= SECOND_MOMENT_GAP_SEC) : undefined;
     if (second) seconds.push({ media, moment: second, score: analysis.score, maxBeats: cap, rank });
