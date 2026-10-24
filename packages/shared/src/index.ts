@@ -9,3 +9,4 @@ export * from './music';
 export * from './timeline';
 export * from './timing';
 export * from './validate';
+export * from './planner';
