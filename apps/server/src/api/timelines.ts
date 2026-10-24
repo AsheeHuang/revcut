@@ -1,5 +1,6 @@
 import { randomInt } from 'node:crypto';
 import {
+  type AiProvider,
   computeTiming,
   DraftBody,
   framesToSec,
@@ -13,6 +14,7 @@ import {
 } from '@revcut/shared';
 import { desc, eq, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import { aiConfig, type AiProviders } from '../ai/providers';
 import { HttpError } from '../app';
 import type { Db } from '../db/client';
 import { claimDraft } from '../db/draftState';
@@ -59,22 +61,30 @@ async function timelineDetail(db: Db, row: TimelineRow): Promise<TimelineDetail>
   };
 }
 
+// SPEC §7.1: a draft runs on a provider with an API key; without one it cannot start.
+export function configuredProvider(ai: AiProviders, requested: AiProvider | undefined): AiProvider {
+  const provider = requested ?? aiConfig(ai).defaultProvider;
+  if (!ai.analyzers[provider]) throw new HttpError(422, 'PROVIDER_NOT_CONFIGURED', `沒有設定 ${provider} 的 API key`);
+  return provider;
+}
+
 export async function findTimeline(db: Db, id: string): Promise<TimelineRow> {
   const [row] = await db.select().from(timelines).where(eq(timelines.id, id));
   if (!row) throw new HttpError(404, 'NOT_FOUND', '找不到這個版本');
   return row;
 }
 
-export const timelineRoutes: FastifyPluginAsyncZod<ApiDeps> = async (app, { db, enqueueDraft }) => {
+export const timelineRoutes: FastifyPluginAsyncZod<ApiDeps> = async (app, { db, ai, enqueueDraft }) => {
   // SPEC §6.4: the preconditions are checked up front, so a draft that starts can only fail on its own work.
   app.post(
     '/api/projects/:id/draft',
     { schema: { params: IdParams, body: DraftBody, response: { 202: Project } } },
     async (request, reply) => {
       const { id } = request.params;
-      const { trackId, startBeat, seed = randomInt(2 ** 31) } = request.body;
+      const { trackId, startBeat, seed = randomInt(2 ** 31), reanalyze = false } = request.body;
       const [project] = await db.select({ id: projects.id }).from(projects).where(eq(projects.id, id));
       if (!project) throw new HttpError(404, 'NOT_FOUND', '找不到專案');
+      const provider = configuredProvider(ai, request.body.provider);
 
       const [track] = await db
         .select({ status: musicTracks.status })
@@ -91,7 +101,7 @@ export const timelineRoutes: FastifyPluginAsyncZod<ApiDeps> = async (app, { db, 
 
       const [claimed] = await claimDraft(db, id);
       if (!claimed) throw new HttpError(409, 'DRAFT_RUNNING', '初版正在產生中');
-      enqueueDraft({ projectId: id, trackId, startBeat, seed });
+      enqueueDraft({ projectId: id, trackId, startBeat, seed, provider, reanalyze });
       return reply.code(202).send(await loadProject(db, id));
     },
   );

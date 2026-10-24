@@ -17,6 +17,7 @@ export function mediaPaths(dataDir: string, media: MediaFile) {
     preview: path.join(derived, 'preview.mp4'),
     photo: path.join(derived, 'photo.jpg'),
     thumb: path.join(derived, 'thumb.webp'),
+    analysis: path.join(project, 'analysis', media.id),
   };
 }
 

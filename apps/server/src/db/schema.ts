@@ -5,6 +5,7 @@ import {
   MEDIA_KINDS,
   MEDIA_STATUSES,
   MUSIC_STATUSES,
+  type Moment,
   RENDER_STATES,
 } from '@revcut/shared';
 import { sql, type SQL } from 'drizzle-orm';
@@ -129,7 +130,7 @@ export const mediaAnalysis = pgTable(
     usable: boolean('usable').notNull(),
     score: smallint('score').notNull(),
     description: text('description').notNull(),
-    moments: jsonb('moments').notNull(),
+    moments: jsonb('moments').$type<Moment[]>().notNull(),
     duplicateOf: uuid('duplicate_of').references(() => media.id, { onDelete: 'set null' }),
     createdAt: createdAt(),
   },

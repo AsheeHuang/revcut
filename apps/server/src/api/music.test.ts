@@ -14,6 +14,7 @@ import { createMusicQueue } from '../jobs/analyzeMusic';
 import { runProcess } from '../process';
 import { musicPaths } from '../storage/paths';
 import { createTestDb } from '../test/db';
+import { providersWith } from '../test/fakeAi';
 import { apiRoutes } from '.';
 
 const passing: Probe = { required: true, timeoutMs: 1000, run: async () => ({ ok: true, detail: '' }) };
@@ -39,6 +40,7 @@ async function start(enqueueAnalyze: (id: string) => void) {
   await app.register(apiRoutes, {
     db: testDb.db,
     dataDir,
+    ai: providersWith(),
     freeBytes: async () => free,
     enqueueIngest: () => {},
     enqueueAnalyze,

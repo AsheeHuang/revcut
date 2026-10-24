@@ -10,6 +10,7 @@ import { media, musicTracks, projects, renders, timelines } from '../db/schema';
 import type { HealthChecks, Probe } from '../health';
 import { renderPaths } from '../storage/paths';
 import { createTestDb } from '../test/db';
+import { providersWith } from '../test/fakeAi';
 import { apiRoutes } from '.';
 
 const passing: Probe = { required: true, timeoutMs: 1000, run: async () => ({ ok: true, detail: '' }) };
@@ -37,6 +38,7 @@ beforeEach(async () => {
   await app.register(apiRoutes, {
     db: testDb.db,
     dataDir,
+    ai: providersWith(),
     freeBytes: async () => 100 * 1024 ** 3,
     enqueueIngest: () => {},
     enqueueAnalyze: () => {},

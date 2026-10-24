@@ -9,6 +9,7 @@ import { media, musicTracks, projects, renders, timelines } from '../db/schema';
 import type { HealthChecks, Probe } from '../health';
 import type { DraftRequest } from '../jobs/draft';
 import { createTestDb } from '../test/db';
+import { fakeAnalyzer, providersWith } from '../test/fakeAi';
 import { apiRoutes } from '.';
 
 const passing: Probe = { required: true, timeoutMs: 1000, run: async () => ({ ok: true, detail: '' }) };
@@ -35,6 +36,7 @@ beforeEach(async () => {
   await app.register(apiRoutes, {
     db: testDb.db,
     dataDir,
+    ai: providersWith(fakeAnalyzer().analyzer),
     freeBytes: async () => 100 * 1024 ** 3,
     enqueueIngest: () => {},
     enqueueAnalyze: () => {},
@@ -112,7 +114,26 @@ describe('POST /api/projects/:id/draft', () => {
     const res = await call('POST', `/api/projects/${project.id}/draft`, { trackId: track.id, startBeat: 8, seed: 42 });
     expect(res.statusCode).toBe(202);
     expect(Project.parse(res.json()).draftState).toBe('queued');
-    expect(drafts).toEqual([{ projectId: project.id, trackId: track.id, startBeat: 8, seed: 42 }]);
+    expect(drafts).toEqual([{ projectId: project.id, trackId: track.id, startBeat: 8, seed: 42, provider: 'openai', reanalyze: false }]);
+  });
+
+  it('passes the chosen provider and reanalyze on', async () => {
+    const project = await addProject();
+    const track = await addTrack();
+    await addMedia(project.id);
+    const res = await call('POST', `/api/projects/${project.id}/draft`, { trackId: track.id, provider: 'openai', reanalyze: true });
+    expect(res.statusCode).toBe(202);
+    expect(drafts[0]).toMatchObject({ provider: 'openai', reanalyze: true });
+  });
+
+  it('answers 422 for a provider without an API key and leaves the project idle', async () => {
+    const project = await addProject();
+    const track = await addTrack();
+    await addMedia(project.id);
+    const res = await call('POST', `/api/projects/${project.id}/draft`, { trackId: track.id, provider: 'anthropic' });
+    expect([res.statusCode, errorCode(res)]).toEqual([422, 'PROVIDER_NOT_CONFIGURED']);
+    expect((await testDb.db.select().from(projects))[0]!.draftState).toBe('idle');
+    expect(drafts).toEqual([]);
   });
 
   it('picks a 31-bit seed when none is given, and drafts again once done or failed', async () => {

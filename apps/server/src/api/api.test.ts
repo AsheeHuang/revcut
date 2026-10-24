@@ -14,6 +14,7 @@ import { media } from '../db/schema';
 import type { HealthChecks, Probe } from '../health';
 import { mediaPaths, projectDir } from '../storage/paths';
 import { createTestDb } from '../test/db';
+import { providersWith } from '../test/fakeAi';
 import { apiRoutes } from '.';
 
 const passing: Probe = { required: true, timeoutMs: 1000, run: async () => ({ ok: true, detail: '' }) };
@@ -42,6 +43,7 @@ beforeEach(async () => {
   await app.register(apiRoutes, {
     db: testDb.db,
     dataDir,
+    ai: providersWith(),
     freeBytes: async () => free,
     enqueueIngest: (id) => enqueued.push(id),
     enqueueAnalyze: () => {},

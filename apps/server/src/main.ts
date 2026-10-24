@@ -1,4 +1,5 @@
 import postgres from 'postgres';
+import { createAiProviders } from './ai/providers';
 import { apiRoutes } from './api';
 import { buildApp } from './app';
 import { loadConfig } from './config';
@@ -17,7 +18,8 @@ const db = createDb(sql);
 const app = buildApp({ checks: createHealthChecks(config, sql), logger: true });
 const ingest = createIngestQueue({ db, dataDir: config.dataDir, defaultTz: config.defaultTz, log: app.log });
 const music = createMusicQueue({ db, dataDir: config.dataDir, analyzeBeats: analyzeBeatsWithUv, log: app.log });
-const draft = createDraftQueue({ db, log: app.log });
+const ai = createAiProviders(config.ai);
+const draft = createDraftQueue({ db, dataDir: config.dataDir, ai, log: app.log });
 const render = createRenderQueue({
   db,
   dataDir: config.dataDir,
@@ -30,6 +32,7 @@ const render = createRenderQueue({
 await app.register(apiRoutes, {
   db,
   dataDir: config.dataDir,
+  ai,
   freeBytes: () => freeBytes(config.dataDir, config.hostDrive),
   enqueueIngest: ingest.enqueue,
   enqueueAnalyze: music.enqueue,
