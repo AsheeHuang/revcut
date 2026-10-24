@@ -6,20 +6,20 @@ Turn hand-picked videos and photos from any period (a month, several months, wha
 
 ## Features
 
-- Upload videos, photos, and Live Photos. Capture time and location are read automatically, and HDR video is converted to SDR.
+- Upload videos, photos, and Live Photos. Capture time is read automatically, and HDR video is converted to SDR.
 - AI (Anthropic or OpenAI) picks the best moments in each video and suggests where to crop for the vertical frame.
 - Each clip is 0.5–2 seconds long, and every cut lands on a music beat.
-- The bottom-left corner shows location and date. When someone speaks, subtitles are added automatically (Whisper).
+- The bottom-left corner shows the capture date. Each clip's original sound plays quietly under the music.
 - In the web editor you can swap clips, change lengths and in-points, drag to re-crop, and edit text. The preview matches the exported video.
-- Everything runs locally. The only exception is AI analysis, which sends downscaled frames and transcripts to the selected AI provider.
+- Everything runs locally. The only exception is AI analysis, which sends downscaled frames to the selected AI provider.
 
 ## Architecture
 
 ```
 Browser (React + Remotion Player)
   └─ /api → Node server (Fastify + in-process job queue)
-              ├ ffmpeg / exiftool / heif-convert: transcoding, metadata
-              ├ Python analyzer: Whisper subtitles, beat_this beat detection
+              ├ ffmpeg / exiftool / heic-decode: transcoding, metadata
+              ├ Python analyzer: beat_this beat detection
               ├ Anthropic / OpenAI: frame analysis
               ├ planner: builds the timeline
               └ Remotion: renders the MP4
@@ -35,8 +35,8 @@ apps/web              frontend
 apps/server           API + background jobs
 packages/shared       timeline schema, timing math, validation rules, planner (shared by web and server)
 packages/composition  Remotion video component (shared by preview and render)
-analyzer/             Python CLI (Whisper, beat detection)
-fixtures/metadata/    sanitized exiftool / ffprobe / Google JSON used by tests (committed)
+analyzer/             Python CLI (beat detection)
+fixtures/metadata/    sanitized exiftool / ffprobe JSON used by tests (committed)
 fixtures/private/     your real media samples (gitignored)
 docs/SPEC.md          spec
 ```
@@ -52,7 +52,6 @@ Development happens on WSL2 (Ubuntu).
 | Docker | Docker Desktop with WSL integration, or Docker Engine inside WSL | Postgres |
 | ffmpeg | must include the `zscale` filter | transcoding, HDR→SDR, clip extraction |
 | exiftool | `libimage-exiftool-perl` | capture time, GPS, Live Photo pairing ID |
-| heif-convert | `libheif-examples` | HEIC → JPEG |
 | uv | astral.sh | Python environment for the analyzer |
 | Chrome libraries | apt packages listed below | Headless Chrome that Remotion downloads for rendering |
 
@@ -60,7 +59,7 @@ Install on Ubuntu 22.04 / WSL (Ubuntu 22.04's `ffmpeg` 4.4.2 already includes `z
 
 ```bash
 sudo apt update
-sudo apt install -y ffmpeg libimage-exiftool-perl libheif-examples
+sudo apt install -y ffmpeg libimage-exiftool-perl
 
 # Libraries for Remotion's headless Chrome (on Ubuntu 24.04, use libasound2t64 instead of libasound2)
 sudo apt install -y libnss3 libdbus-1-3 libatk1.0-0 libasound2 libxrandr2 libxkbcommon-dev \
@@ -86,8 +85,6 @@ docker compose up -d            # start Postgres
 pnpm db:migrate                 # create tables
 pnpm dev                        # open http://localhost:5173
 ```
-
-The first transcription downloads the Whisper model (about 1.6 GB).
 
 ## Commands
 
@@ -115,7 +112,6 @@ exiftool -G -n IMG_1234.MOV                                     # inspect media 
 ffprobe -hide_banner IMG_1234.MOV                               # codec, frame rate, HDR or not
 
 uv run --project analyzer python -m analyzer beats --input song.wav      # run beat detection alone
-uv run --project analyzer python -m analyzer transcribe --inputs a.wav   # run speech-to-text alone
 ```
 
 ## Environment variables
@@ -127,10 +123,8 @@ uv run --project analyzer python -m analyzer transcribe --inputs a.wav   # run s
 | `AI_PROVIDER` | Default AI provider: `anthropic` or `openai` |
 | `ANTHROPIC_API_KEY` | Anthropic API key, from the Claude Console (billed separately from a Claude subscription) |
 | `OPENAI_API_KEY`, `OPENAI_MODEL` | OpenAI API key and model |
-| `GOOGLE_MAPS_API_KEY` | Turns GPS coordinates into place names |
 | `DATA_DIR` | Where all media and renders are stored. Leave empty for `~/.revcut/data`. To change it, write an absolute path, because `.env` does not expand `~` |
 | `HOST_DRIVE` | The Windows drive that holds the WSL virtual disk, default `/mnt/c`. Used to check real free space |
-| `WHISPER_DEVICE`, `WHISPER_COMPUTE_TYPE` | `cpu` + `int8` by default. Use `cuda` + `float16` only if CUDA libraries are installed in WSL |
 
 ## Notes
 

@@ -1,13 +1,14 @@
 # revcut 規格書（SPEC）
 
-> 版本：v0.4 草稿（2026-10-24）
-> 狀態：**等待確認，確認前不開工**
+> 版本：v0.5（2026-10-24）
+> 狀態：第 0 期已驗收，第 1 期實作完成待驗收
 > 一句話：單人自用的網頁，把自己挑好的一段時間（一個月、幾個月或任意期間）的影片和照片，自動排成一支對拍、直式、20–25 秒的 IG Reels，手動微調後再匯出。
 >
 > 變更紀錄：
 > - v0.2：一般片段不再靜音；Live Photo 當影片處理；AI 同時支援 Anthropic 和 OpenAI；專案不再綁定月份。
 > - v0.3：不使用 R2，所有檔案只存在本機。
 > - v0.4：依對抗式審查修正。修正匯出偏移、說話片段範圍、重複偵測、Live Photo 配對、拍點對齊和排版演算法；拿掉 pg-boss；上傳改成一步完成；時間軸版本直接修改；排版程式移到 `packages/shared`。
+> - v0.5：縮小 MVP，拿掉地名和字幕（連同 Whisper 語音辨識與說話片段）；HEIC 改用 `heic-decode` 解碼；Live Photo 照片端的 ID 標籤改為 `Apple:MediaGroupUUID`。
 
 ---
 
@@ -18,7 +19,7 @@
 1. 建立專案並取名，例如「2026 秋天」。專案不綁定月份，可以涵蓋一個月、幾個月或任意期間
 2. 上傳挑好的影片和照片（Live Photo 要連同同名的 MOV 一起上傳），系統自動轉檔、讀取拍攝時間和地點
 3. 從曲庫選一首歌，系統建議要用哪一段
-4. 選擇 AI 供應商（Anthropic 或 OpenAI），按「產生初版」：語音轉文字 → AI 分析畫面 → 排版程式排出時間軸
+4. 選擇 AI 供應商（Anthropic 或 OpenAI），按「產生初版」：AI 分析畫面 → 排版程式排出時間軸
 5. 在編輯器調整：換片段、調長度、調起點、調裁切、改文字
 6. 按「匯出」：算圖 → 下載 MP4 → 自己傳到手機、上傳到 IG
 
@@ -30,10 +31,10 @@
 | 幀率 | 30 fps，固定幀率 |
 | 編碼 | H.264 High + AAC 48 kHz 立體聲，MP4（faststart） |
 | 長度 | 20–25 秒，以整數小節為原則，結尾落在重拍 |
-| 片段長度 | 一般片段 0.5–2 秒；說話片段不超過 5 秒，整支最多 2 段 |
+| 片段長度 | 0.5–2 秒 |
 | 切點 | 全部落在拍點上，使用硬切 |
-| 疊字 | 左下角：地點和日期；說話片段：字幕 |
-| 聲音 | 背景音樂加上影片原音。一般片段的原音預設以較低音量和音樂混在一起；說話片段的原音放大，同時音樂壓低 |
+| 疊字 | 左下角：拍攝日期 |
+| 聲音 | 背景音樂加上影片原音。原音預設以較低音量和音樂混在一起 |
 
 ### 1.3 不做（MVP 範圍外）
 
@@ -45,6 +46,8 @@
 - 雲端儲存：所有檔案只存在本機，成品由你自己傳到手機
 - Android 動態相片（Motion Photo）：當一般照片處理。iPhone Live Photo 則當影片處理（§4.4）
 - AI 自動選歌
+- 地名：不查詢、不顯示拍攝地點（GPS 只用來推算時區）
+- 字幕和語音辨識：不轉錄、不偵測說話，也不會因為有人說話而壓低音樂
 - 重新整理頁面後還能 undo：undo 紀錄只存在當次頁面
 
 ---
@@ -65,15 +68,14 @@
 ┌──────────────── apps/server（Node 24，單一程序）────────────┐
 │ Fastify API（zod 驗證，schema 來自 packages/shared）         │
 │ 背景工作（程式內佇列，狀態存在資料表）                         │
-│  ├ media.ingest    ffmpeg / exiftool / heif-convert / sharp │
+│  ├ media.ingest    ffmpeg / exiftool / heic-decode / sharp  │
 │  ├ music.analyze   → Python analyzer（拍點）                 │
-│  ├ project.draft   → Python analyzer（Whisper）              │
-│  │                 → AI（Anthropic／OpenAI）→ planner        │
+│  ├ project.draft   → AI（Anthropic／OpenAI）→ planner        │
 │  └ timeline.render → ffmpeg 切高畫質片段 → Remotion 算圖     │
 └──────┬──────────────────────────────┬───────────────────────┘
        ▼                              ▼                         外部服務：
   Postgres 17（docker）          本機磁碟 DATA_DIR                Anthropic／OpenAI API
-  業務資料表                      原檔、衍生檔、音樂、成品、暫存      Google Geocoding API
+  業務資料表                      原檔、衍生檔、音樂、成品、暫存
 ```
 
 ### 2.2 技術選型
@@ -87,10 +89,9 @@
 | 工作佇列 | 程式內佇列（`p-queue`），工作狀態存在各資料表的狀態欄位 | 單人、單一程序，不需要獨立的佇列服務 |
 | 資料庫 | Postgres 17（docker compose） | |
 | 檔案儲存 | 本機磁碟（WSL 檔案系統內的 `DATA_DIR`） | 原檔本來就在 NAS，本機只放這次要用的複本 |
-| 媒體工具 | ffmpeg（必須含 `zscale`/libzimg）、exiftool、heif-convert（libheif）、sharp | |
-| 音訊分析 | Python 3.12 + uv：faster-whisper（`large-v3-turbo`）、beat_this、OpenCC | |
+| 媒體工具 | ffmpeg（必須含 `zscale`/libzimg）、exiftool、`heic-decode`（libheif 1.23 的 WASM 版）、sharp | 系統的 libheif 1.12 讀不了 iPhone 16 Pro 的 HEIC（10 張失敗 9 張），所以改用 npm 套件 |
+| 音訊分析 | Python 3.12 + uv：beat_this（拍點） | |
 | AI | Anthropic TypeScript SDK（預設 `claude-opus-5-5`）、OpenAI Node SDK（模型由設定決定） | 兩家可切換，共用同一份 prompt 和輸出格式（§7） |
-| 地名 | Google Geocoding API（`language=zh-TW`） | |
 | 時區 | `@photostructure/tz-lookup`（由 GPS 推算時區） | |
 
 ### 2.3 Repo 結構（pnpm workspaces）
@@ -103,7 +104,7 @@ revcut/
 │     └ src/
 │        ├ api/              路由
 │        ├ jobs/             背景工作和佇列
-│        ├ media/            ffmpeg / exiftool / heif-convert 包裝，以及 metadata 解析（純函式）
+│        ├ media/            ffmpeg / exiftool / heic-decode 包裝，以及 metadata 解析（純函式）
 │        ├ ai/               AI 分析：共用的 prompt 和輸出 schema，加上 anthropic／openai 兩個 adapter
 │        ├ render/           Remotion 算圖
 │        ├ storage/          本機檔案路徑、串流寫入、Range 讀取、磁碟空間
@@ -112,9 +113,9 @@ revcut/
 │  ├ shared/                 前後端共用：zod schema（Timeline、API DTO）、常數、時間換算、驗證規則、
 │  │                         planner（排版）、buildClip（片段預設值）、Live Photo 分組
 │  └ composition/            Remotion 影片元件（web 預覽與 server 算圖共用）
-├ analyzer/                  Python CLI（uv 專案）
+├ analyzer/                  Python CLI（uv 專案，只負責拍點）
 ├ fixtures/
-│  ├ metadata/               去除個資的 exiftool／ffprobe／Google 回應 JSON，可以 commit
+│  ├ metadata/               去除個資的 exiftool／ffprobe 輸出 JSON，可以 commit
 │  └ private/                真實素材樣本（列入 .gitignore）
 ├ docker-compose.yml         Postgres
 ├ .env.example
@@ -128,7 +129,7 @@ revcut/
   - web：`:5173`，`/api` 由 Vite proxy 轉到 `:3000`
   - server：`:3000`，API 和背景工作跑在同一個程序
 - server 只監聽 `127.0.0.1`，而且只接受 `Host` 為 `localhost` 或 `127.0.0.1` 的請求（任何 port），用來擋 DNS rebinding 攻擊
-- 系統需求：Node 24、pnpm、Docker、ffmpeg（含 zscale）、exiftool、`libheif-examples`、uv，以及 Remotion 的 Chrome 需要的系統套件（見 README）
+- 系統需求：Node 24、pnpm、Docker（含 compose 外掛）、ffmpeg（含 zscale）、exiftool、uv，以及 Remotion 的 Chrome 需要的系統套件（見 README）
 - `DATA_DIR` 必須放在 WSL 自己的檔案系統內（預設 `~/.revcut/data`）。放在 `/mnt/c` 或 NAS 會讓讀寫很慢，預覽拖曳時會卡
 
 ---
@@ -159,13 +160,8 @@ export const Clip = z.object({
     zoom: z.number().min(1).max(3),          // 1 = 剛好填滿 9:16
   }),
   kenBurns: z.object({ endZoom: z.number().min(1).max(3) }).nullable(), // 照片：zoom 漸變到 endZoom
-  overlay: z.object({
-    place: z.string().nullable(),            // null 表示不顯示
-    date: z.string().nullable(),             // 例："2026.10.03"
-  }),
-  subtitle: z.string().nullable(),
+  date: z.string().nullable(),               // 左下角日期，例："2026.10.03"；null 表示不顯示
   originalVolume: z.number().min(0).max(1),  // 影片原音音量；照片忽略
-  speech: z.boolean(),                       // true：壓低音樂（原音音量通常設為 1）
 });
 
 export const Timeline = z.object({
@@ -176,7 +172,7 @@ export const Timeline = z.object({
     volume: z.number().min(0).max(1),        // 預設 1
     fadeOutSec: z.number().min(0).max(5),    // 預設 1.5，套用在整體混音
   }),
-  overlayEnabled: z.boolean(),               // 地點和日期的總開關
+  overlayEnabled: z.boolean(),               // 日期的總開關
   clips: z.array(Clip).min(1),
 });
 ```
@@ -217,10 +213,8 @@ f0             F(s)                                  音樂從歌曲的第 f0 �
 | 規則 | 等級 |
 |---|---|
 | 一般片段長度在 0.5–2.0 秒之間 | 警告 |
-| 說話片段不超過 5 秒、整支最多 2 段 | 警告 |
 | 總長度在 20–25 秒之間 | 警告 |
 | 總拍數是整數小節（結尾落在重拍） | 警告 |
-| 字幕不超過 32 字（約兩行） | 警告 |
 | 影片片段的 `sourceInSec` 加上片段秒數，不超過影片長度 | 錯誤 |
 | `music.startBeat` 是重拍 | 錯誤 |
 | 歌曲存在而且已分析完成，拍數夠用 | 錯誤 |
@@ -233,10 +227,9 @@ f0             F(s)                                  音樂從歌曲的第 f0 �
 換歌由 `packages/shared` 的純函式處理，有單元測試：
 
 1. 新的 `startBeat` 取新歌的建議起點（§8.2 第 1 步）。
-2. 一般片段：改成新歌節奏下最接近原本秒數、而且在允許範圍內的拍數。
-3. 說話片段：取能涵蓋整句話的最少拍數，一律無條件進位。
-4. 用 §8.2 第 6 步的分配方法，把總拍數調整成新歌的目標拍數 T。
-5. 影片片段的起點如果讓片段超出影片長度，就往前移到剛好放得下。
+2. 每段改成新歌節奏下最接近原本秒數、而且在允許範圍內的拍數。
+3. 用 §8.2 第 5 步的分配方法，把總拍數調整成新歌的目標拍數 T。
+4. 影片片段的起點如果讓片段超出影片長度，就往前移到剛好放得下。
 
 ---
 
@@ -245,7 +238,7 @@ f0             F(s)                                  音樂從歌曲的第 f0 �
 ### 4.1 關聯
 
 ```
-projects 1─* media 1─* speech_segments
+projects 1─* media
 projects 1─* analysis_runs 1─* media_analysis *─1 media
 projects 1─* timelines 1─* renders
 music_tracks ←── timelines.data.music.trackId（JSON 內的參照）
@@ -260,7 +253,7 @@ create table projects (
   id                  uuid primary key default gen_random_uuid(),
   title               text not null,                  -- 不綁定月份，期間由素材的拍攝時間決定
   current_timeline_id uuid,                           -- FK → timelines（見下）
-  draft_state         text not null default 'idle',   -- idle|queued|transcribing|analyzing|planning|done|failed
+  draft_state         text not null default 'idle',   -- idle|queued|analyzing|planning|done|failed
   draft_error         text,
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now()
@@ -288,27 +281,14 @@ create table media (
   utc_offset_min      smallint,                       -- 拍攝地的時區偏移，顯示當地日期用
   lat                 double precision,
   lng                 double precision,
-  place_label         text,                           -- 例：「台北市 大安區」，可手動修改
-  place_label_edited  boolean not null default false,
   excluded            boolean not null default false, -- 使用者排除，不參與分析和排版
   content_identifier  text,                           -- Apple Live Photo 配對用 ID
-  transcribed_at      timestamptz,                    -- 跑過 Whisper 就有值（就算沒有任何語音）
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now(),
   unique (project_id, sha256)                         -- 同專案不能有重複檔案
 );
 create index on media (project_id, captured_at);
 create index on media (project_id, content_identifier);
-
-create table speech_segments (
-  id         uuid primary key default gen_random_uuid(),
-  media_id   uuid not null references media(id) on delete cascade,
-  idx        smallint not null,                       -- 在該支影片中的順序，prompt 裡寫成 s1、s2…
-  start_sec  real not null,                           -- 第一個字的開始時間
-  end_sec    real not null,                           -- 最後一個字的結束時間
-  text       text not null,                           -- 已轉成台灣正體
-  created_at timestamptz not null default now()
-);
 
 create table analysis_runs (
   id            uuid primary key default gen_random_uuid(),
@@ -333,7 +313,6 @@ create table media_analysis (
   score             smallint not null,                -- 1–10
   description       text not null,                    -- 繁體中文，30 字以內
   moments           jsonb not null,                   -- [{t, score, focusX, focusY}]
-  speech_segment_id uuid references speech_segments(id) on delete set null,
   duplicate_of      uuid references media(id) on delete set null,
   created_at        timestamptz not null default now(),
   primary key (analysis_run_id, media_id)
@@ -395,7 +374,7 @@ create table renders (
 - 只儲存 `content_identifier`，不儲存配對結果。分組在讀取時用純函式 `groupLivePhotos(media[])` 決定，有單元測試。
 - 同一專案中 `content_identifier` 相同的素材是一組：
   - 組內有 `ready` 的影片（MOV）時，照片（HEIC）不顯示，也不參與分析和排版。
-  - 影片缺少拍攝時間、GPS 或地名時，沿用同組照片的值。
+  - 影片缺少拍攝時間或 GPS 時，沿用同組照片的值。
   - 影片還沒處理完時，照片照常顯示。產生初版要求所有素材都處理完成（§6.4），所以排版不會遇到處理到一半的狀態。
 - 刪除組內任何一個素材，整組一起刪除。
 - 只上傳 HEIC、沒有 MOV 的 Live Photo，就是一般照片。
@@ -466,10 +445,10 @@ DATA_DIR/
 |---|---|---|---|---|
 | `media.ingest` | 上傳完成、手動重試 | 2 | `media.status` | 30 分鐘 |
 | `music.analyze` | 音樂上傳完成 | 1 | `music_tracks.status` | 15 分鐘 |
-| `project.draft` | 按「產生初版」或「AI 重排」 | 1 | `projects.draft_state` | 轉錄 30 分鐘、AI 分析 10 分鐘 |
+| `project.draft` | 按「產生初版」或「AI 重排」 | 1 | `projects.draft_state` | AI 分析 10 分鐘 |
 | `timeline.render` | 按「匯出」 | 1 | `renders.state` | 60 分鐘 |
 
-- **逾時**：由工作自己用 AbortSignal 處理，並結束它啟動的 ffmpeg、Python 等子程序。
+- **逾時**：由工作自己用 AbortSignal 處理，並結束它啟動的 ffmpeg 等子程序。
 - **可以重跑**：每個工作的輸出都先寫到暫存路徑再改名。重跑會從資料表現有的狀態判斷要做什麼，結果和第一次一樣。
 - **啟動時的處理**，依狀態欄位決定：
   - 免費的工作（素材處理、拍點分析、匯出）：停在排隊中或執行中的，全部重新排入佇列。
@@ -492,8 +471,10 @@ DATA_DIR/
      4. 瀏覽器提供的檔案修改時間
    - 時區，依序取第一個有值的：檔案內明確寫的時區 → 用 GPS 推算的時區 → `DEFAULT_TZ`（Asia/Taipei）。
    - 沒有時區資訊的時間（例如只有 `DateTimeOriginal`），當作拍攝地的當地時間。UTC 的時間換算成拍攝地的時區。
-   - 上面的標籤名稱在 Phase 1 用真實檔案確認，去除個資後的輸出存成 fixture。
-3. **Live Photo ID**：HEIC 讀 `Apple:ContentIdentifier`，MOV 讀 `Keys:ContentIdentifier`（同樣在 Phase 1 確認）。分組方式見 §4.4。
+   - 上面的標籤名稱已在 Phase 1 用真實檔案確認，去除個資後的輸出存成 fixture。
+   - Live Photo 的 MOV 上，`QuickTime:CreateDate` 是匯出時間，可能比拍攝晚好幾個小時，所以 `Keys:CreationDate` 一定要排在它前面。
+   - 有些編輯 App 會在時間後面加上「下午」之類的字，解析時只讀前面的時間。
+3. **Live Photo ID**：HEIC 讀 `Apple:MediaGroupUUID`（exiftool 12.19 起把這個 maker note 標籤從 ContentIdentifier 改名），MOV 讀 `Keys:ContentIdentifier`，兩者的值相同。Phase 1 已用真實檔案確認。分組方式見 §4.4。
 4. **HDR 判斷**：`color_transfer` 是 `smpte2084` 或 `arib-std-b67` 就是 HDR。
 5. **產生衍生檔**：
    - **影片預覽檔** `preview.mp4`：
@@ -502,17 +483,11 @@ DATA_DIR/
      - SDR 影片只縮放。
      - 轉成固定 30 fps；編碼參數 `libx264 -preset veryfast -crf 23 -g 15`、AAC 128k、`+faststart`；旋轉交給 ffmpeg 自動處理。
    - **照片** `photo.jpg`：
-     - HEIC 先用 `heif-convert` 轉成 PNG，避免兩次有損壓縮。
-     - 再用 sharp 依 EXIF 轉正、長邊縮到 3072、JPEG 品質 85。
-     - Phase 1 用直拍的 HEIC 確認照片不會被轉正兩次。
+     - HEIC 用 `heic-decode` 解碼成未壓縮的像素（同時套用旋轉），只有最後輸出 JPEG 時壓縮一次。
+     - 其他照片用 sharp 依 EXIF 轉正。
+     - 再用 sharp 長邊縮到 3072、JPEG 品質 85。
    - **縮圖** `thumb.webp`：長邊 360。影片取 min(1 秒, 長度/2) 那一格。
-6. **轉成地名**（純函式 `placeLabel`，用錄製的 Google 回應做單元測試）：
-   - 呼叫 Google reverse geocoding（`language=zh-TW`），使用第一個 types 包含 `locality` 或 `administrative_area_level_*` 的結果。
-   - 組字規則依國家寫成對照表。預設規則：城市取 `locality`，沒有就取 `administrative_area_level_1`，不顯示行政區。
-   - 台灣和日本的規則（目標格式「台北市 大安區」）在 Phase 1 用錄製的回應決定，並涵蓋美國的測試案例。
-   - 不快取查詢結果。地名存在每個素材上，查詢次數很少。
-   - 查詢失敗只會讓地名留空，不影響 ingest。你手動改過的地名（`place_label_edited`）不會被覆蓋。
-7. 衍生檔寫入 `derived/`，狀態改成 `ready`。
+6. 衍生檔寫入 `derived/`，狀態改成 `ready`。
 
 ### 6.3 `music.analyze`：拍點分析
 
@@ -533,17 +508,13 @@ DATA_DIR/
 
 **步驟**：
 
-1. **`transcribing`**：
-   - 找出有音軌、未排除、還沒轉錄過（`transcribed_at` 為空）的影片。
-   - 從原檔抽出 16 kHz 單聲道 wav。
-   - 一次呼叫 `analyzer transcribe` 處理全部檔案（模型只載入一次），結果寫進 `speech_segments`。
-2. **`analyzing`**：
+1. **`analyzing`**：
    - **可以重用的條件**：最新一次 `status='done'` 的分析，供應商和模型都和這次相同，而且它分析過的素材包含這次全部的素材（未排除、處理完成、不含被 Live Photo 影片取代的照片）。這次沒有指定 `reanalyze`。
    - 可以重用時，只取這次素材的結果；`duplicateOf` 指向不在這次素材裡的，當作沒有重複。
    - 不能重用時，從預覽檔抽畫面，呼叫選定的 AI 供應商（§7）。
    - 就算每支影片只送 2 張畫面仍超過供應商的限制，就失敗並說明「素材太多」。
-3. **`planning`**：執行排版程式（§8），寫入新的 `timelines`，並更新 `current_timeline_id`。排版程式回傳「素材不足」等錯誤時，draft 失敗並顯示原因。
-4. 狀態改成 `done`。
+2. **`planning`**：執行排版程式（§8），寫入新的 `timelines`，並更新 `current_timeline_id`。排版程式回傳「素材不足」等錯誤時，draft 失敗並顯示原因。
+3. 狀態改成 `done`。
 
 **費用提示**：前端在按鈕旁邊呼叫 `GET /api/projects/:id/draft-estimate`。不能重用分析時，顯示預估費用。
 
@@ -607,15 +578,14 @@ interface VisionAnalyzer {
 
 ### 7.2 輸入組成
 
-素材依拍攝時間排序，每個素材用短代號（`m1`、`m2`…）指稱，降低對應錯誤。逐字稿編號（`s1`、`s2`…）在每支影片內各自從 1 開始。
+素材依拍攝時間排序，每個素材用短代號（`m1`、`m2`…）指稱，降低對應錯誤。
 
 ```
 [system] 角色、評分標準、輸出規則（固定文字）
 [user]
-  素材 m1｜影片｜12.4 秒｜2026-10-03 14:22｜台北市 大安區
+  素材 m1｜影片｜12.4 秒｜2026-10-03 14:22
   t=0.8s <image>  t=2.3s <image>  …
-  逐字稿：[s1] 3.1–4.6s 生日快樂！  [s2] …
-  素材 m2｜照片｜2026-10-04 09:10｜新北市 淡水區
+  素材 m2｜照片｜2026-10-04 09:10
   <image>
   …
   （最後放任務說明）
@@ -636,9 +606,6 @@ interface VisionAnalyzer {
 - `moments`：
   - 影片挑 1–3 個最值得用的瞬間，照片挑 1 個
   - `focusX`/`focusY` 是主體在原始畫面中的位置，直式裁切會以這個點為中心
-- `speechSegment`：
-  - 只有在這句話有意義（祝福、笑點、有情緒的一句話）、聲音清楚、而且短於 5 秒時才選
-  - 整批最多建議 2 個
 - `duplicateOf`：同一場景幾乎一樣的兩個素材，把比較差的那個標記為重複。
 - `description` 用繁體中文，30 字以內。
 - 不辨識、也不命名畫面中的人物。
@@ -657,7 +624,6 @@ const MediaVerdict = z.object({
     focusX: z.number(),                  // 0–1
     focusY: z.number(),
   })),
-  speechSegment: z.string().nullable(),  // "s1"
   duplicateOf: z.string().nullable(),    // "m3"
 });
 const AnalysisResult = z.object({ media: z.array(MediaVerdict) });
@@ -667,7 +633,7 @@ const AnalysisResult = z.object({ media: z.array(MediaVerdict) });
 
 - 把短代號對回 uuid
 - 超出範圍的數值夾回合法範圍
-- 某個素材沒有出現在結果裡時，給預設值：分數 5、焦點在畫面中央、沒有說話片段
+- 某個素材沒有出現在結果裡時，給預設值：分數 5、焦點在畫面中央
 - 模型拒絕回答或輸出被截斷時（Anthropic 的 `stop_reason` 為 `refusal` 或 `max_tokens`，OpenAI 則看對應的狀態），這次分析失敗並顯示原因
 - 結果不符合 schema 時重試一次
 
@@ -687,7 +653,7 @@ const AnalysisResult = z.object({ media: z.array(MediaVerdict) });
 
 ### 7.6 隱私
 
-抽出的畫面和逐字稿會送到選定的供應商。Anthropic 文件說明上傳的圖片不會用來訓練模型；OpenAI 的 API 資料政策以其官方條款為準。原檔不會送出。
+抽出的畫面會送到選定的供應商。Anthropic 文件說明上傳的圖片不會用來訓練模型；OpenAI 的 API 資料政策以其官方條款為準。原檔不會送出。
 
 ---
 
@@ -700,19 +666,16 @@ const AnalysisResult = z.object({ media: z.array(MediaVerdict) });
 ```
 FPS = 30, WIDTH = 1080, HEIGHT = 1920
 CLIP_MIN_SEC = 0.5, CLIP_MAX_SEC = 2.0
-SPEECH_MAX_SEC = 5.0, SPEECH_MAX_COUNT = 2, SPEECH_PAD_SEC = 0.1
 TARGET_MIN_SEC = 20, TARGET_MAX_SEC = 25, TARGET_SEC = 22.5
-DUCK_GAIN = 0.25, DUCK_RAMP_SEC = 0.15
 ORIGINAL_DEFAULT_VOLUME = 0.35, CLIP_AUDIO_FADE_SEC = 0.05
 PHOTO_END_ZOOM = 1.08
 FADE_OUT_SEC = 1.5
-SUBTITLE_MAX_CHARS = 32
 MAX_CLIPS_PER_DAY = 3
 ```
 
 ### 8.2 步驟
 
-**輸入**：處理完成、未排除的素材（已套用 Live Photo 分組）和它們的 AI 分析結果、逐字稿、歌曲的 beats/downbeat 索引/energy、可選的 `startBeat`、seed。
+**輸入**：處理完成、未排除的素材（已套用 Live Photo 分組）和它們的 AI 分析結果、歌曲的 beats/downbeat 索引/energy、可選的 `startBeat`、seed。
 
 1. **決定音樂段落**
    - 每小節拍數 = 相鄰重拍索引差的眾數（通常是 4）。
@@ -722,44 +685,35 @@ MAX_CLIPS_PER_DAY = 3
    - 起點候選：所有後面還剩至少 T 拍的重拍。沒有指定 `startBeat` 時，選這一段平均 energy 最高的候選。沒有任何候選時，回傳錯誤「歌曲太短」。
 2. **算出允許的拍數範圍**
    - 拍長 d = 這一段拍距的中位數。
-   - 一般片段允許 bmin = ⌈0.5 / d⌉ 到 bmax = ⌊2.0 / d⌋ 拍。
+   - 每段允許 bmin = ⌈0.5 / d⌉ 到 bmax = ⌊2.0 / d⌋ 拍。
    - 基本長度 L₀ = 範圍內最接近 1.0 秒的拍數。
    - 每段實際秒數用 §3.3 依真實拍點換算，最後由驗證規則檢查。
 3. **建立候選池**：`usable` 為真、而且沒有被標成重複的素材。每個素材先取分數最高的瞬間。
-4. **說話片段**
-   - 把有 `speechSegment` 的素材依分數排序，最多取 2 個。
-   - 說話範圍 = [第一個字開始 − 0.1 秒, 最後一個字結束 + 0.1 秒]。
-   - 拍數 = 能涵蓋說話範圍的最少拍數。
-   - 起點 = clamp(說話範圍開始, 0, 影片長度 − 片段秒數)。
-   - 以下兩種情況，改當一般片段：拍數換算超過 5 秒；或夾回影片範圍後，片段沒有完整涵蓋說話範圍。
-5. **決定片段數量並選片**
-   - 剩餘拍數 R = T − 說話片段的總拍數。
-   - 可行的片段數範圍是 ⌈R / bmax⌉ 到 ⌊R / bmin⌋。目標片段數 C = round(R / L₀)，再夾進這個範圍。
+4. **決定片段數量並選片**
+   - 可行的片段數範圍是 ⌈T / bmax⌉ 到 ⌊T / bmin⌋。目標片段數 C = round(T / L₀)，再夾進這個範圍。
    - **候選數 ≥ C**：依分數挑 C 個。每天最多 3 段；放不滿時，每天的上限一次加 1，直到放滿。同分時用 seed 決定。
    - **候選數 < C**：依序處理到能放滿為止：
      1. 從分數最高的影片補第二個瞬間，必須和第一個相隔 3 秒以上
-     2. 候選數仍然 ≥ ⌈R / bmax⌉ 時，C 就等於候選數，每段會比較長
-     3. 還不夠的話，一次減少 1 小節，重新計算 T 和 R。總長可能低於 20 秒，由驗證規則警告
+     2. 候選數仍然 ≥ ⌈T / bmax⌉ 時，C 就等於候選數，每段會比較長
+     3. 還不夠的話，一次減少 1 小節，重新計算 T。總長可能低於 20 秒，由驗證規則警告
      4. 減到 0 小節仍放不滿，回傳錯誤「素材不足」
-6. **分配拍數**（`allocateBeats`，換歌時也用它）
-   - 每段先給 L₀ 拍，算出差額 = R − C × L₀。
+5. **分配拍數**（`allocateBeats`，換歌時也用它）
+   - 每段先給 L₀ 拍，算出差額 = T − C × L₀。
    - 差額 > 0：每次把一拍加給「還沒到 bmax 的片段中分數最高的」，直到差額為 0。
    - 差額 < 0：每次從「還高於 bmin 的片段中分數最低的」減一拍，直到差額為 0。
    - 節奏變化：用 seed 隨機挑 ⌊C / 4⌋ 對片段，從一段移一拍到另一段，前提是兩段都還在範圍內。
-   - 結果保證：每段都在 [bmin, bmax]，總和等於 R。
-7. **排序**：所有片段（包括說話片段）依拍攝時間排序。
-8. **對齊影片長度並填入各欄位**
+   - 結果保證：每段都在 [bmin, bmax]，總和等於 T。
+6. **排序**：所有片段依拍攝時間排序。
+7. **對齊影片長度並填入各欄位**
    - 排序後依 §3.3 換算每段的實際秒數。
    - 影片比片段短時，和相鄰片段交換拍數。還是放不下，就把這段減到放得下的最大拍數，多出來的拍給其他片段。
    - 用 `buildClip` 填入各欄位：
-     - 一般影片的 `sourceInSec` = clamp(瞬間時間 − 片段秒數 / 2, 0, 影片長度 − 片段秒數)
-     - 說話片段的 `sourceInSec` 用第 4 步的起點
+     - 影片的 `sourceInSec` = clamp(瞬間時間 − 片段秒數 / 2, 0, 影片長度 − 片段秒數)
      - `crop`：焦點取瞬間的位置，zoom 為 1
      - 照片：`kenBurns.endZoom` = 1.08
-     - `overlay`：place 取素材的地名，date 取拍攝當地日期，格式 `YYYY.MM.DD`
-     - `originalVolume`：一般影片 0.35，說話片段 1.0
-     - 說話片段：`subtitle` 填這句話的文字，`speech` 設為 true
-9. **驗證**：跑 §3.4 的規則。有「錯誤」就回傳錯誤和原因；只有「警告」照常輸出。
+     - `date`：拍攝當地日期，格式 `YYYY.MM.DD`
+     - `originalVolume`：0.35
+8. **驗證**：跑 §3.4 的規則。有「錯誤」就回傳錯誤和原因；只有「警告」照常輸出。
 
 ---
 
@@ -788,21 +742,16 @@ type CompositionProps = {
 
 ### 9.2 畫面
 
-- **圖層順序**（由下到上）：素材 → 左下地點和日期 → 字幕。
+- **圖層順序**（由下到上）：素材 → 左下日期。
 - **裁切公式**：
   - 縮放比例 = max(1080 / w, 1920 / h) × zoom，得到縮放後的尺寸 W × H
   - 水平位移 = clamp(540 − focusX × W, 1080 − W, 0)
   - 垂直位移 = clamp(960 − focusY × H, 1920 − H, 0)
   - 因為焦點座標是 0–1 的比例，預覽檔和原檔的解析度不同也會得到一樣的結果
 - **照片動態**：zoom 在片段內從 `crop.zoom` 線性變化到 `kenBurns.endZoom`，以焦點為中心放大。
-- **地點和日期**：
+- **日期**：
   - 位置：左邊 64 px，距離底部 480 px（常數，Phase 3 用 IG 實際畫面校正）
-  - 兩行：地名 40 px、日期 32 px，字型 Noto Sans TC Medium，白色加陰影
-  - 地名是 null 時，只顯示日期
-- **字幕**：
-  - 字型 Noto Sans TC Bold 52 px，白字黑邊
-  - 最多 2 行，最大寬度 860 px，超出的部分以「…」截斷（驗證規則會先警告）
-  - 水平置中於安全區（避開 IG 右側的按鈕欄），位置在地點和日期的上方
+  - 字型 Noto Sans TC Medium 36 px，白色加陰影
 - **字型**：字型檔隨專案打包。算圖時用 `delayRender` 確保字型載入完成再開始畫。
 - **IG 介面遮罩**：只在編輯器預覽中顯示，不會出現在成品裡。用半透明圖層示意 IG 的右側按鈕欄、底部帳號名稱和文案、頂部標題。
 
@@ -810,7 +759,6 @@ type CompositionProps = {
 
 - **音樂**：從歌曲的第 f0 格（§3.3）開始播放，音量為 `music.volume`。
 - **影片原音**：每個影片片段的原音音量為 `originalVolume`，前後各 0.05 秒淡入淡出，避免切換時爆音。照片沒有聲音。
-- **說話片段**：音樂降到 0.25 倍，前後各用 0.15 秒漸變。
 - **結尾淡出**：最後 `fadeOutSec` 秒，音樂和原音一起線性淡出。
 
 ---
@@ -836,19 +784,19 @@ type CompositionProps = {
 
 | Method | Path | 說明 |
 |---|---|---|
-| GET | `/api/health` | 檢查 DB、ffmpeg（含 zscale）、exiftool、heif-convert、analyzer（含 Whisper 裝置設定）、Remotion 的瀏覽器能否啟動、各 API key 是否設定，以及剩餘空間 |
+| GET | `/api/health` | 檢查 DB、ffmpeg（含 zscale）、ffprobe、exiftool、analyzer、Remotion 的瀏覽器能否啟動、各 API key 是否設定，以及剩餘空間 |
 | GET | `/api/config` | 可用的 AI 供應商和模型（有設定 API key 才算可用），以及預設供應商 |
 | GET | `/api/projects` | 專案列表 |
 | POST | `/api/projects` | 建立專案 `{title}` |
 | GET | `/api/projects/:id` | 專案詳情 |
-| PATCH | `/api/projects/:id` | `{title?, currentTimelineId?}` |
+| PATCH | `/api/projects/:id` | `{title?}`（第 3 期加上 `currentTimelineId`） |
 | DELETE | `/api/projects/:id` | 刪除專案和它的所有檔案（有工作進行中回 409） |
 | POST | `/api/projects/:id/media?filename=&lastModified=` | 上傳一個素材，body 就是檔案本身。回 201 Media；重複回 409；空間不足回 507 |
 | GET | `/api/projects/:id/media` | 素材列表（已套用 Live Photo 分組） |
-| GET | `/api/media/:id` | 素材詳情（含逐字稿和最新的 AI 分析） |
+| GET | `/api/media/:id` | 素材詳情（含最新的 AI 分析） |
 | GET | `/api/media/:id/preview` | 預覽檔（影片 mp4 或照片 jpg），支援 Range |
 | GET | `/api/media/:id/thumb` | 縮圖 |
-| PATCH | `/api/media/:id` | `{placeLabel?, excluded?}` |
+| PATCH | `/api/media/:id` | `{excluded?}` |
 | POST | `/api/media/:id/retry` | 重跑失敗的素材處理 |
 | DELETE | `/api/media/:id` | 刪除素材（Live Photo 整組一起刪；處理中回 409） |
 | GET | `/api/music` | 曲庫列表 |
@@ -888,13 +836,13 @@ type CompositionProps = {
   "filename": "IMG_1234.MOV",
   "width": 1080, "height": 1920, "durationSec": 12.4, "isHdr": true, "hasAudio": true,
   "capturedAt": "2026-10-03T14:22:10+08:00",
-  "lat": 25.026, "lng": 121.543, "placeLabel": "台北市 大安區",
+  "lat": 25.026, "lng": 121.543,
   "excluded": false, "livePhoto": false,
-  "thumbUrl": "/api/media/…/thumb", "previewUrl": "/api/media/…/preview",
+  "thumbUrl": "/api/media/…/thumb", "previewUrl": "/api/media/…/preview",   // 處理完成前為 null
   "analysis": {
     "usable": true, "score": 8, "description": "朋友在餐廳吹蠟燭",
     "moments": [{ "t": 3.2, "score": 9, "focusX": 0.52, "focusY": 0.41 }],
-    "speechSegmentId": "…", "duplicateOf": null
+    "duplicateOf": null
   }
 }
 ```
@@ -975,7 +923,7 @@ type CompositionProps = {
   - 失敗的檔案可以按「重傳」；重複的檔案顯示「與 IMG_xxxx 重複」。
 - **素材格狀列表**：
   - 依拍攝時間排序
-  - 每格顯示：縮圖、狀態、時間、地名（可直接修改）、排除開關
+  - 每格顯示：縮圖、狀態、時間、排除開關
   - 處理失敗的素材顯示錯誤訊息，並提供「重試」和「刪除」
   - Live Photo 只顯示一張卡片（標示 LIVE）
 - **產生初版區**：
@@ -984,15 +932,15 @@ type CompositionProps = {
   - 選擇 AI 供應商，預設值來自設定
   - 需要重新分析時，按鈕旁顯示預估費用
   - 還有素材在處理時，按鈕不能按
-  - 按「產生初版」後，依序顯示「轉錄語音中 → AI 分析中 → 排版中」
+  - 按「產生初版」後，依序顯示「AI 分析中 → 排版中」
 
 ### 11.3 編輯器
 
 ```
 ┌────────────────┬─────────────────────────────────────────────┐
 │                │ 片段屬性（目前選取的片段）                      │
-│  9:16 預覽      │  換素材｜起點｜拍數 −/+｜裁切｜地點/日期｜字幕     │
-│  [IG 遮罩開關]  │  原音音量｜說話開關                             │
+│  9:16 預覽      │  換素材｜起點｜拍數 −/+｜裁切｜日期｜原音音量      │
+│  [IG 遮罩開關]  │                                             │
 ├────────────────┴─────────────────────────────────────────────┤
 │ 時間軸：片段卡片，寬度和拍數成正比，可拖曳排序；下方是拍點尺，標出重拍   │
 ├──────────────────────────────────────────────────────────────┤
@@ -1014,9 +962,8 @@ type CompositionProps = {
   - 在原片的時間軸上拖曳選擇從哪一秒開始
   - 時間軸上標出 AI 建議的瞬間
 - **裁切**：在預覽畫面上直接拖曳來移動焦點，旁邊有 zoom 滑桿。
-- **文字**：可修改地點、日期、字幕。
+- **日期**：可修改或隱藏。
 - **原音音量**：影片片段可調整原音音量（0–100%）。
-- **說話開關**：只有帶音軌的影片可以開啟。開啟時原音自動調到 100%，並壓低音樂。
 
 **音樂操作**
 
@@ -1049,23 +996,15 @@ type CompositionProps = {
 
 ```
 analyzer/
-├ pyproject.toml            uv 管理；依賴 faster-whisper、beat_this、opencc、numpy、soundfile
-└ src/analyzer/
-   ├ __main__.py
-   └ blocklist.txt          Whisper 常見的幻覺字串，一行一個
+├ pyproject.toml            uv 管理；依賴 beat_this、numpy、soundfile
+└ src/analyzer/__main__.py
 ```
 
 | 指令 | 輸入 | 輸出（stdout） |
 |---|---|---|
-| `transcribe --model large-v3-turbo --language zh --device cpu --compute-type int8 --inputs a.wav b.wav …` | 多個 16 kHz wav | 每個檔案一行 JSON：`{input, segments: [{start, end, text, words: [{start, end, word}]}]}` |
+| `doctor` | 無 | `{ok, python}`，給健康檢查用 |
 | `beats --input song.wav` | 一個 wav | `{bpm, beats: [], downbeatIndices: [], energy: {hopSec: 0.5, values: []}}` |
 
-- **transcribe**：
-  - 開啟 VAD 和 `word_timestamps`。片段的開始和結束時間取第一個字和最後一個字，比整句的時間點準確。
-  - 語言固定為中文。
-  - 過濾幻覺字幕，符合任一條件就丟掉：`no_speech_prob > 0.6`、`avg_logprob < −1.0`、`compression_ratio > 2.4`、長度 < 0.3 秒、內容出現在 `blocklist.txt`。門檻在 Phase 4 用真實素材調整。
-  - 文字用 OpenCC 的 `s2twp` 轉成台灣正體。
-  - `--device` 和 `--compute-type` 來自設定。GPU 需要 WSL 裝好 CUDA 函式庫，沒裝好就用 CPU。
 - **beats**：重拍的時間對應到最接近的 beat，輸出成索引。
 - **呼叫方式**：Node 執行 `uv run --project analyzer python -m analyzer …`。stdout 當結果解析，stderr 寫進 log；逾時或取消時結束子程序。
 
@@ -1082,13 +1021,9 @@ ANTHROPIC_EFFORT=medium
 OPENAI_API_KEY=
 OPENAI_MODEL=                         # Phase 4 選定
 OPENAI_REASONING_EFFORT=medium
-GOOGLE_MAPS_API_KEY=
 DATA_DIR=                             # 留空就是 ~/.revcut/data；要改請寫絕對路徑（.env 不會展開 ~）
 HOST_DRIVE=/mnt/c                     # WSL 虛擬硬碟所在的 Windows 磁碟，用來檢查真正的剩餘空間
 DEFAULT_TZ=Asia/Taipei
-WHISPER_MODEL=large-v3-turbo
-WHISPER_DEVICE=cpu                    # cpu | cuda
-WHISPER_COMPUTE_TYPE=int8             # CPU 用 int8；CUDA 用 float16
 PORT=3000
 ```
 
@@ -1104,10 +1039,8 @@ PORT=3000
 
 | 情況 | 處理 |
 |---|---|
-| Google Geocoding 失敗 | 地名留空，不影響素材處理 |
 | AI 供應商失敗 | 這次產生初版失敗，顯示原因（被拒絕、輸出被截斷、格式不符、API key 無效） |
 | 磁碟空間不足 | 拒絕上傳（507）；匯出前也會檢查，空間不夠就直接失敗並說明原因 |
-| Whisper 無法載入（例如設定 CUDA 但沒有函式庫） | 產生初版失敗並說明；`/api/health` 事先就會顯示 |
 | Remotion 的瀏覽器無法啟動 | 匯出失敗並提示安裝 README 列的系統套件；`/api/health` 事先就會顯示 |
 
 - log 用 pino 輸出 JSON 到 stdout。
@@ -1119,11 +1052,11 @@ PORT=3000
 | 範圍 | 工具 | 內容 |
 |---|---|---|
 | `packages/shared` 時間軸 | vitest | 影格換算（100 段也不累積誤差、半格以內的對齊誤差）、`sliceWindow`（起點 0、0.2、接近結尾）、各條驗證規則、換歌、Live Photo 分組 |
-| `packages/shared` planner | vitest | 性質測試：60–180 BPM 下每段都在允許範圍、總拍數等於 T、說話片段 ≤ 2、依時間排序、同一個 seed 結果相同。另外測說話在 t=0 和影片最後 0.5 秒、素材不足、素材過多 |
-| metadata 解析 | vitest | `resolveCaptureTime`（有時區、沒有時區、UTC、只有修改時間）、`placeLabel`（台灣、日本、美國的錄製回應）、HDR 判斷、副檔名判斷。fixture 是去除個資的 JSON，放在 `fixtures/metadata/`，可以 commit |
+| `packages/shared` planner | vitest | 性質測試：60–180 BPM 下每段都在允許範圍、總拍數等於 T、依時間排序、同一個 seed 結果相同。另外測影片比片段短、素材不足、素材過多 |
+| metadata 解析 | vitest | `resolveCaptureTime`（有時區、沒有時區、UTC、只有修改時間）、HDR 判斷、副檔名判斷。fixture 是去除個資的 JSON，放在 `fixtures/metadata/`，可以 commit |
 | AI adapter | vitest | 用錄好的回應測試兩家 adapter：request 格式轉換、schema 驗證、短代號對回 uuid、缺漏和超出範圍的處理、依實際模型計費。不實際呼叫 API |
 | server API | vitest + 測試用資料庫 | 狀態轉換、409／422／507、重複上傳、Host 檢查、分析重用條件、啟動時的處理、刪除限制。外部 API 在模組邊界用假實作取代，檔案寫到測試用的暫存目錄 |
-| analyzer | pytest | 合成的 120 BPM 節拍器音檔只驗證拍距 0.5 秒 ±20 ms，不驗證重拍。幻覺過濾、bpm 計算、重拍索引對應用固定輸入測試 |
+| analyzer | pytest | 合成的 120 BPM 節拍器音檔只驗證拍距 0.5 秒 ±20 ms，不驗證重拍。bpm 計算、重拍索引對應用固定輸入測試 |
 | 媒體實際處理 | 手動驗收 | 真實樣本放在 `fixtures/private/`（列入 .gitignore）；需要樣本的測試在檔案不存在時跳過 |
 
 ---
@@ -1133,10 +1066,10 @@ PORT=3000
 | 期 | 範圍 | 驗收條件 |
 |---|---|---|
 | 0 骨架 | monorepo、docker Postgres、所有資料表的 migration、`/api/health`、Host 檢查、確認 Remotion 授權 | `pnpm dev` 能同時啟動兩個服務，health 全部通過（含剩餘空間和 Remotion 瀏覽器）；非 localhost 的 Host 回 403 |
-| 1 素材處理 | 串流上傳和 Range 讀取、ingest、衍生檔、metadata 解析、地名、Live Photo 分組、素材頁 | 用真實樣本測試（iPhone HDR 影片、HEIC、Live Photo、Android MP4、直拍和橫拍）：預覽顏色和方向正確；拍攝時間和「照片」App 顯示的一致；地名正確；Live Photo 顯示為一張 LIVE 卡片，預覽是動態影片；重複上傳回 409。記錄一支 iPhone 4K HDR 影片產生預覽檔的時間 |
+| 1 素材處理 | 串流上傳和 Range 讀取、ingest、衍生檔、metadata 解析、Live Photo 分組、素材頁 | 用真實樣本測試（iPhone HDR 影片、HEIC、Live Photo、Android MP4、直拍和橫拍）：預覽顏色和方向正確；拍攝時間和「照片」App 顯示的一致；Live Photo 顯示為一張 LIVE 卡片，預覽是動態影片；重複上傳回 409。記錄一支 iPhone 4K HDR 影片產生預覽檔的時間 |
 | 2 曲庫 | 音樂上傳、拍點分析、曲庫頁（可用節拍器聲試聽） | 3 首不同速度的歌，節拍器聲聽起來對齊；BPM 和已知值相差在 ±1 以內；建議段落落在 20–25 秒，而且從重拍開始 |
 | 3 合成與匯出 | composition、唯讀預覽、簡易排版（依時間排序、每段固定拍數、置中裁切）、完整匯出流程、IG 遮罩 | 用 ffprobe 確認成品為 1080×1920、30 fps、h264/aac；影格換算和 `sliceWindow` 的測試通過；抽 3 個時間點比對，預覽和成品一致（包含從影片開頭附近開始的片段）；上傳到 IG 發文預覽時，左下文字沒有被擋住 |
-| 4 AI 初版 | Whisper、抽畫面、AI 分析（Anthropic 和 OpenAI 兩個 adapter）、正式排版程式、字幕、原音和音樂混音 | 用你真實的素材，兩家各產出一次初版；每次費用都有記錄，Anthropic 低於 US$2；說話片段 ≤ 2 段，字幕是正體中文，第一個字沒有被切掉；planner 和 adapter 測試全部通過 |
+| 4 AI 初版 | 抽畫面、AI 分析（Anthropic 和 OpenAI 兩個 adapter）、正式排版程式、原音和音樂混音 | 用你真實的素材，兩家各產出一次初版；每次費用都有記錄，Anthropic 低於 US$2；planner 和 adapter 測試全部通過 |
 | 5 編輯器 | §11.3 的全部功能 | 每個操作都會即時反映在預覽；剛改完立刻匯出，成品也包含最後的修改；換歌後總長仍是整數小節；重新整理頁面後修改還在 |
 
 每一期完成後我會停下來，請你驗收之後才進入下一期。
@@ -1151,14 +1084,13 @@ PORT=3000
 | HDR 轉 SDR 的顏色不自然 | 用真實素材比對，調整 tonemap 參數 |
 | HDR 影片轉預覽檔太慢 | 先縮小再轉色彩；Phase 1 量測並記錄 |
 | beat_this 依賴 PyTorch：安裝檔大，CPU 分析一首歌需要數十秒 | 如果安裝或準確度有問題，改用 librosa（沒有重拍，改用每 4 拍推算） |
-| Whisper 在 CPU 上太慢 | 預設 turbo 模型，太慢就改用 small；有 GPU 時設定 `WHISPER_DEVICE=cuda` |
 | AI 給的焦點座標只是近似值 | 編輯器可以拖曳修正 |
 | 兩家模型的判斷品質可能不同 | Phase 4 用同一批素材各跑一次比較，再決定預設供應商 |
 | 從 iPhone 匯出到電腦時，Live Photo 可能只剩 HEIC（例如只選了照片，或用「最相容」格式匯出） | 沒有 MOV 的一律當照片；Phase 1 用你實際的匯出方式測試 |
-| 一般片段保留原音後，每次切換時環境音忽大忽小，聽起來可能很雜 | 預設音量偏低（35%），每段前後淡入淡出，也可以逐段調整 |
-| exiftool 標籤名稱、Google 地名欄位在實際檔案上和預期不同 | Phase 1 用真實檔案確認，結果存成 fixture，解析函式先寫測試 |
+| 保留原音後，每次切換時環境音忽大忽小，聽起來可能很雜 | 預設音量偏低（35%），每段前後淡入淡出，也可以逐段調整 |
+| 素材的 metadata 和預期不同（新 iPhone、編輯 App 改過的檔案） | 解析函式只吃 fixture 測過的格式；遇到新格式先加 fixture 和測試再改 |
 | IG 會再壓縮一次影片 | 用高畫質輸出；發文前先在 IG 預覽畫面確認 |
-| 依賴項目的授權或費用條款有變 | Phase 0 確認 Remotion 授權，Phase 1 確認 Google Geocoding 的免費額度 |
+| 依賴項目的授權條款有變 | Phase 0 已確認 Remotion 4 個人使用免費；Remotion 5 的條款會改變，升級前再確認 |
 
 ---
 
@@ -1166,23 +1098,21 @@ PORT=3000
 
 以下是我提出、你同意或沒有異議的預設值。要改的話隨時說，大多只是改一個常數。
 
-1. 地點和日期在每個片段都顯示，切換片段時文字跟著換。
+1. 左下角只顯示拍攝日期，每個片段都顯示，切換片段時跟著換。
 2. 結尾淡出 1.5 秒，音樂和原音一起淡出。
 3. 只支援桌面版 Chrome。
 4. 片段依拍攝時間排序。
 5. 除了硬切之外不做轉場特效。
-6. 說話片段最多 2 段。
-7. 重複的檔案在上傳時就拒絕，不會建立素材。
-8. 一般片段的原音預設音量 35%，和音樂混在一起；說話片段原音 100%，音樂壓到 25%。
-9. AI 供應商兩家擇一切換：每次產生初版時選一家，不會同時呼叫兩家再合併結果。
-10. 不論專案涵蓋多長的期間，成品都維持 20–25 秒。
-11. Live Photo 要連同同名的 MOV 一起上傳才會當影片；只有 HEIC 就當照片。
-12. 被時間軸用過的歌可以刪除，用到它的版本會顯示錯誤。
-13. 素材處理中、或專案有工作進行中時，不能刪除。
-14. Whisper 語言固定為中文。
-15. 不快取地名查詢，也不另外儲存版本長度。
-16. 保留逐素材的 AI 分析表（`media_analysis`）。
-17. Whisper 的幻覺字幕用信心分數和黑名單過濾。
-18. Remotion 在第一次匯出時才準備，`pnpm dev` 重啟比較快。
-19. server 重啟後，免費的工作自動重跑；付費的產生初版不自動重跑。
-20. 時間軸版本直接修改；要回到某個 AI 版本，用它的 seed 再排一次。
+6. 重複的檔案在上傳時就拒絕，不會建立素材。
+7. 影片原音預設音量 35%，和音樂混在一起。
+8. AI 供應商兩家擇一切換：每次產生初版時選一家，不會同時呼叫兩家再合併結果。
+9. 不論專案涵蓋多長的期間，成品都維持 20–25 秒。
+10. Live Photo 要連同同名的 MOV 一起上傳才會當影片；只有 HEIC 就當照片。
+11. 被時間軸用過的歌可以刪除，用到它的版本會顯示錯誤。
+12. 素材處理中、或專案有工作進行中時，不能刪除。
+13. 保留逐素材的 AI 分析表（`media_analysis`）。
+14. Remotion 在第一次匯出時才準備，`pnpm dev` 重啟比較快。
+15. server 重啟後，免費的工作自動重跑；付費的產生初版不自動重跑。
+16. 時間軸版本直接修改；要回到某個 AI 版本，用它的 seed 再排一次。
+17. MVP 不做地名和字幕（v0.5）。Whisper 一起拿掉，所以也不偵測說話、不壓低音樂。
+18. HEIC 用 `heic-decode` 解碼，因為系統的 libheif 1.12 讀不了 iPhone 16 Pro 的 HEIC。解碼在主執行緒上跑，每張約 1 秒，單人使用可以接受。

@@ -30,7 +30,7 @@ revcut is a local, single-user web app that turns hand-picked videos and photos 
 - For anything that can be tested without a human, write a failing test first, then the code:
   - `packages/shared`: timing math, `sliceWindow`, validation rules, song changes, Live Photo grouping
   - `packages/shared` planner: the invariants listed in SPEC §15
-  - metadata parsing (`resolveCaptureTime`, `placeLabel`): sanitized JSON in `fixtures/metadata/`
+  - metadata parsing (`resolveCaptureTime`): sanitized JSON in `fixtures/metadata/`
   - AI adapters: test against recorded responses in fixtures, never live calls
   - API routes: state transitions and 4xx cases
   - `analyzer`: synthetic audio, e.g. a 120 BPM click track
@@ -39,7 +39,7 @@ revcut is a local, single-user web app that turns hand-picked videos and photos 
   1. Write down the manual acceptance check from SPEC §16 before implementing.
   2. Implement.
   3. Run the check and report the result.
-- Tests must never call paid APIs (Anthropic, OpenAI, Google) or depend on private media.
+- Tests must never call paid APIs (Anthropic, OpenAI) or depend on private media.
   - Private samples live in `fixtures/private/`, which is gitignored.
   - Tests that need those samples skip when the files are missing.
 
