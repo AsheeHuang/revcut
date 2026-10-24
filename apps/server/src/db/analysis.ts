@@ -47,3 +47,17 @@ export async function runAnalyses(db: Db, runId: string, mediaIds: string[]): Pr
     rows.map((row) => [row.mediaId, { ...toAnalysis(row), duplicateOf: row.duplicateOf && ids.has(row.duplicateOf) ? row.duplicateOf : null }]),
   );
 }
+
+// SPEC §10.3: each media shows its analysis from the latest finished run that covered it.
+export async function latestAnalyses(db: Db, mediaIds: string[]): Promise<Map<string, MediaAnalysis>> {
+  if (mediaIds.length === 0) return new Map();
+  const rows = await db
+    .select({ analysis: mediaAnalysis })
+    .from(mediaAnalysis)
+    .innerJoin(analysisRuns, eq(analysisRuns.id, mediaAnalysis.analysisRunId))
+    .where(and(eq(analysisRuns.status, 'done'), inArray(mediaAnalysis.mediaId, mediaIds)))
+    .orderBy(desc(analysisRuns.createdAt));
+  const latest = new Map<string, MediaAnalysis>();
+  for (const { analysis } of rows) if (!latest.has(analysis.mediaId)) latest.set(analysis.mediaId, toAnalysis(analysis));
+  return latest;
+}

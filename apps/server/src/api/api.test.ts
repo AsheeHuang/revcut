@@ -10,7 +10,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { buildApp } from '../app';
-import { media } from '../db/schema';
+import { analysisRuns, media, mediaAnalysis } from '../db/schema';
 import type { HealthChecks, Probe } from '../health';
 import { mediaPaths, projectDir } from '../storage/paths';
 import { createTestDb } from '../test/db';
@@ -251,6 +251,48 @@ describe('media list', () => {
       ['IMG_0300.JPG', false],
     ]);
     expect(ready[0]).toMatchObject({ capturedAt: '2026-01-08T19:31:37+08:00', thumbUrl: `/api/media/${mov.id}/thumb` });
+  });
+
+  it('shows each media’s analysis from the latest finished run that covered it', async () => {
+    const { id } = await createProject();
+    const [first, second] = [await uploaded(id, 'a.jpg'), await uploaded(id, 'b.jpg')];
+    await setRow(first.id, { status: 'ready' });
+    await setRow(second.id, { status: 'ready' });
+    const addRun = async (status: 'done' | 'running', minute: number, scores: [string, number][]) => {
+      const [run] = await testDb.db
+        .insert(analysisRuns)
+        .values({ projectId: id, mediaIds: scores.map(([mediaId]) => mediaId), provider: 'openai', model: 'gpt-6-astra', effort: 'medium', status, createdAt: new Date(Date.UTC(2026, 9, 24, 0, minute)) })
+        .returning();
+      await testDb.db.insert(mediaAnalysis).values(
+        scores.map(([mediaId, score]) => ({
+          analysisRunId: run!.id,
+          mediaId,
+          usable: true,
+          score,
+          description: `分數 ${score}`,
+          moments: [{ t: 0, score, focusX: 0.5, focusY: 0.5 }],
+          duplicateOf: null,
+        })),
+      );
+    };
+    await addRun('done', 0, [[first.id, 4], [second.id, 6]]);
+    await addRun('done', 1, [[first.id, 8]]);
+    await addRun('running', 2, [[first.id, 1], [second.id, 1]]);
+
+    const list = z.array(Media).parse((await call('GET', `/api/projects/${id}/media`)).json());
+    expect(list.map((m) => [m.filename, m.analysis?.score, m.analysis?.description])).toEqual([
+      ['a.jpg', 8, '分數 8'],
+      ['b.jpg', 6, '分數 6'],
+    ]);
+    expect(Media.parse((await call('GET', `/api/media/${first.id}`)).json()).analysis).toEqual({
+      usable: true,
+      score: 8,
+      description: '分數 8',
+      moments: [{ t: 0, score: 8, focusX: 0.5, focusY: 0.5 }],
+      duplicateOf: null,
+    });
+    const unanalyzed = await uploaded(id, 'c.jpg');
+    expect(Media.parse((await call('GET', `/api/media/${unanalyzed.id}`)).json()).analysis).toBeNull();
   });
 });
 

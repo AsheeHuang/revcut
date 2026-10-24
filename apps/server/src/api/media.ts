@@ -7,6 +7,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod, ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { HttpError } from '../app';
+import { latestAnalyses } from '../db/analysis';
 import type { Db } from '../db/client';
 import { transitionMedia } from '../db/mediaStatus';
 import { media, projects } from '../db/schema';
@@ -37,7 +38,7 @@ function liveGroup(db: Db, row: MediaRow) {
 
 async function loadMediaDto(db: Db, id: string): Promise<Media> {
   const row = await findMedia(db, id);
-  return mediaDto(row, await liveGroup(db, row));
+  return mediaDto(row, await liveGroup(db, row), await latestAnalyses(db, [row.id]));
 }
 
 export const mediaRoutes: FastifyPluginAsyncZod<ApiDeps> = async (app, { db, dataDir, freeBytes, enqueueIngest }) => {
@@ -115,7 +116,8 @@ export const mediaRoutes: FastifyPluginAsyncZod<ApiDeps> = async (app, { db, dat
   app.get('/api/projects/:id/media', { schema: { params: IdParams, response: { 200: z.array(Media) } } }, async (request) => {
     const [project] = await db.select({ id: projects.id }).from(projects).where(eq(projects.id, request.params.id));
     if (!project) throw new HttpError(404, 'NOT_FOUND', '找不到專案');
-    return visibleMedia(await db.select().from(media).where(eq(media.projectId, request.params.id)));
+    const rows = await db.select().from(media).where(eq(media.projectId, request.params.id));
+    return visibleMedia(rows, await latestAnalyses(db, rows.map((row) => row.id)));
   });
 
   app.get('/api/media/:id', { schema: { params: IdParams, response: { 200: Media } } }, (request) =>

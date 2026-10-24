@@ -4,6 +4,7 @@ import {
   groupLivePhotos,
   isMediaBusy,
   type Media,
+  type MediaAnalysis,
   type MusicTrack,
   type MusicTrackDetail,
   type Project,
@@ -16,7 +17,7 @@ type MediaRow = typeof media.$inferSelect;
 type ProjectRow = typeof projects.$inferSelect;
 type MusicRow = typeof musicTracks.$inferSelect;
 
-function toMediaRecord(row: MediaRow) {
+function toMediaRecord(row: MediaRow, analysis: MediaAnalysis | null) {
   const ready = row.status === 'ready';
   return {
     id: row.id,
@@ -36,7 +37,7 @@ function toMediaRecord(row: MediaRow) {
     contentIdentifier: row.contentIdentifier,
     thumbUrl: ready ? `/api/media/${row.id}/thumb` : null,
     previewUrl: ready ? `/api/media/${row.id}/preview` : null,
-    analysis: null,
+    analysis,
   };
 }
 
@@ -48,17 +49,17 @@ function byCaptureTime(a: Media, b: Media): number {
   return a.filename.localeCompare(b.filename);
 }
 
-export function visibleMedia(rows: MediaRow[]): Media[] {
-  return groupLivePhotos(rows.map(toMediaRecord))
+export function visibleMedia(rows: MediaRow[], analyses = new Map<string, MediaAnalysis>()): Media[] {
+  return groupLivePhotos(rows.map((row) => toMediaRecord(row, analyses.get(row.id) ?? null)))
     .map(({ contentIdentifier: _, ...item }) => item)
     .sort(byCaptureTime);
 }
 
 // One media as the list would show it; a HEIC hidden behind its LIVE video still answers by id.
-export function mediaDto(row: MediaRow, group: MediaRow[]): Media {
-  const shown = visibleMedia(group).find((item) => item.id === row.id);
+export function mediaDto(row: MediaRow, group: MediaRow[], analyses = new Map<string, MediaAnalysis>()): Media {
+  const shown = visibleMedia(group, analyses).find((item) => item.id === row.id);
   if (shown) return shown;
-  const { contentIdentifier: _, ...item } = toMediaRecord(row);
+  const { contentIdentifier: _, ...item } = toMediaRecord(row, analyses.get(row.id) ?? null);
   return { ...item, livePhoto: false };
 }
 
