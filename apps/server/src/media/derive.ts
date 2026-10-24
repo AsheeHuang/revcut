@@ -15,10 +15,9 @@ export function previewSize(width: number, height: number): { width: number; hei
   return { width: even(width), height: even(height) };
 }
 
-// SPEC §6.2 step 5: HDR is scaled in the first zscale so the float math runs at 720p, not 4K.
-function scaleFilter(video: VideoInfo): string {
-  const { width, height } = previewSize(video.width, video.height);
-  if (!isHdr(video.colorTransfer)) return `scale=${width}:${height},format=yuv420p`;
+// SPEC §6.2 step 5: HDR is scaled in the first zscale so the float math runs at the target size, not 4K.
+export function scaleFilter(hdr: boolean, { width, height }: { width: number; height: number }): string {
+  if (!hdr) return `scale=${width}:${height},format=yuv420p`;
   return [
     `zscale=w=${width}:h=${height}:t=linear:npl=100`,
     'format=gbrpf32le',
@@ -43,7 +42,7 @@ export async function makeVideoDerivatives(source: string, dir: string, video: V
     'ffmpeg',
     [
       ...['-y', '-v', 'error', '-i', source, '-map', '0:v:0', '-map', '0:a:0?'],
-      ...['-vf', `fps=30,${scaleFilter(video)}`],
+      ...['-vf', `fps=30,${scaleFilter(isHdr(video.colorTransfer), previewSize(video.width, video.height))}`],
       ...['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-g', '15'],
       ...['-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709'],
       ...['-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-f', 'mp4', preview],
