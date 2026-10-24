@@ -2,7 +2,7 @@
 
 Turn hand-picked videos and photos from any period (a month, several months, whatever) into a beat-synced, vertical 9:16, 20–25 second IG Reel. The AI drafts a first cut, you fine-tune it in the browser, and rendering only starts when you click Export.
 
-> Status: Phases 0–4 are built; Phase 5 (the timeline editor) is in progress. See [docs/SPEC.md](docs/SPEC.md).
+> Status: all phases (0–5) are built, including the timeline editor. See [docs/SPEC.md](docs/SPEC.md).
 
 ## Features
 
