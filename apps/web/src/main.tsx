@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { createBrowserRouter, Link, Outlet } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
 import { HealthPage } from './HealthPage';
+import { MusicPage } from './MusicPage';
 import { ProjectPage } from './ProjectPage';
 import { ProjectsPage } from './ProjectsPage';
 import './index.css';
@@ -14,6 +15,9 @@ function Layout() {
       <nav className="flex items-center gap-6 border-b border-slate-200 bg-white px-8 py-3">
         <Link to="/" className="text-lg font-semibold">
           revcut
+        </Link>
+        <Link to="/music" className="text-sm text-slate-600 hover:text-slate-900">
+          曲庫
         </Link>
         <Link to="/health" className="text-sm text-slate-600 hover:text-slate-900">
           系統檢查
@@ -30,6 +34,7 @@ const router = createBrowserRouter([
     children: [
       { path: '/', element: <ProjectsPage /> },
       { path: '/projects/:id', element: <ProjectPage /> },
+      { path: '/music', element: <MusicPage /> },
       { path: '/health', element: <HealthPage /> },
     ],
   },
