@@ -48,14 +48,23 @@ function meanEnergy({ hopSec, values }: Energy, fromSec: number, toSec: number):
   return window.length === 0 ? 0 : window.reduce((sum, v) => sum + v, 0) / window.length;
 }
 
+export type BarShape = { beatsPerBar: number; bars: number };
+
 // SPEC §8.2 step 1. The tracker can follow part of a song at double or triple time, so a
-// bar is timed only across downbeats one full bar apart, and a candidate must really last 20–25 s.
-export function suggestSection(beats: number[], downbeatIndices: number[], energy: Energy): SectionResult {
-  if (downbeatIndices.length < 2) return { ok: false, error: 'NO_DOWNBEATS' };
+// bar is timed only across downbeats one full bar apart. Null with fewer than two downbeats.
+export function barShape(beats: readonly number[], downbeatIndices: readonly number[]): BarShape | null {
+  if (downbeatIndices.length < 2) return null;
   const pairs = downbeatIndices.slice(1).map((index, i) => [downbeatIndices[i]!, index] as const);
   const beatsPerBar = mode(pairs.map(([a, b]) => b - a));
   const fullBars = pairs.filter(([a, b]) => b - a === beatsPerBar);
-  const bars = barCount(median(fullBars.map(([a, b]) => beats[b]! - beats[a]!)));
+  return { beatsPerBar, bars: barCount(median(fullBars.map(([a, b]) => beats[b]! - beats[a]!))) };
+}
+
+// A candidate start must have a whole section after it that really lasts 20–25 s.
+export function suggestSection(beats: number[], downbeatIndices: number[], energy: Energy): SectionResult {
+  const shape = barShape(beats, downbeatIndices);
+  if (!shape) return { ok: false, error: 'NO_DOWNBEATS' };
+  const { beatsPerBar, bars } = shape;
   const totalBeats = bars * beatsPerBar;
 
   let best: { startBeat: number; energy: number } | null = null;
