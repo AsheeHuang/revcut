@@ -49,7 +49,6 @@ export const Media = z.object({
   capturedAt: z.iso.datetime({ offset: true }).nullable(),
   lat: z.number().nullable(),
   lng: z.number().nullable(),
-  placeLabel: z.string().nullable(),
   excluded: z.boolean(),
   livePhoto: z.boolean(),
   thumbUrl: z.string().nullable(),
@@ -58,17 +57,8 @@ export const Media = z.object({
 });
 export type Media = z.infer<typeof Media>;
 
-export const PatchMediaBody = z.object({
-  placeLabel: z
-    .string()
-    .trim()
-    .max(100)
-    .nullable()
-    .optional()
-    .transform((value) => (value === '' ? null : value)),
-  excluded: z.boolean().optional(),
-});
-export type PatchMediaBody = z.input<typeof PatchMediaBody>;
+export const PatchMediaBody = z.object({ excluded: z.boolean().optional() });
+export type PatchMediaBody = z.infer<typeof PatchMediaBody>;
 
 export const UploadMediaQuery = z.object({
   filename: z.string().min(1).max(255),

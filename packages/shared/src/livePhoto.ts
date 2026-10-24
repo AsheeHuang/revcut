@@ -7,7 +7,6 @@ export type LiveGroupable = {
   capturedAt: string | null;
   lat: number | null;
   lng: number | null;
-  placeLabel: string | null;
 };
 
 type Grouped<T> = T & { livePhoto: boolean };
@@ -36,7 +35,6 @@ export function groupLivePhotos<T extends LiveGroupable>(media: readonly T[]): G
         capturedAt: item.capturedAt ?? photo.capturedAt,
         lat: hasGps ? item.lat : photo.lat,
         lng: hasGps ? item.lng : photo.lng,
-        placeLabel: item.placeLabel ?? photo.placeLabel,
         livePhoto: true,
       },
     ];

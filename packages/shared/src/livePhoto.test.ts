@@ -3,7 +3,7 @@ import { groupLivePhotos, type LiveGroupable } from './livePhoto';
 
 type Item = LiveGroupable & { id: string };
 
-const base = { status: 'ready', contentIdentifier: null, capturedAt: null, lat: null, lng: null, placeLabel: null } as const;
+const base = { status: 'ready', contentIdentifier: null, capturedAt: null, lat: null, lng: null } as const;
 
 const heic = (id: string, overrides: Partial<Item> = {}): Item => ({ ...base, id, kind: 'photo', ...overrides });
 const mov = (id: string, overrides: Partial<Item> = {}): Item => ({ ...base, id, kind: 'video', ...overrides });
@@ -37,13 +37,12 @@ describe('groupLivePhotos', () => {
     ]);
   });
 
-  it('fills the video’s missing capture time, GPS and place from its photo', () => {
+  it('fills the video’s missing capture time and GPS from its photo', () => {
     const photo = heic('photo', {
       contentIdentifier: 'A',
       capturedAt: '2026-10-03T14:22:10+08:00',
       lat: 25.026,
       lng: 121.543,
-      placeLabel: '台北市 大安區',
     });
     const [video] = groupLivePhotos([photo, mov('video', { contentIdentifier: 'A' })]);
     expect(video).toMatchObject({
@@ -51,17 +50,13 @@ describe('groupLivePhotos', () => {
       capturedAt: '2026-10-03T14:22:10+08:00',
       lat: 25.026,
       lng: 121.543,
-      placeLabel: '台北市 大安區',
     });
   });
 
   it('keeps the video’s own values when it has them', () => {
-    const photo = heic('photo', { contentIdentifier: 'A', capturedAt: '2026-10-03T14:22:10+08:00', placeLabel: '照片' });
-    const video = mov('video', { contentIdentifier: 'A', capturedAt: '2026-10-03T14:22:11+08:00', placeLabel: '影片' });
-    expect(groupLivePhotos([photo, video])[0]).toMatchObject({
-      capturedAt: '2026-10-03T14:22:11+08:00',
-      placeLabel: '影片',
-    });
+    const photo = heic('photo', { contentIdentifier: 'A', capturedAt: '2026-10-03T14:22:10+08:00', lat: 1, lng: 2 });
+    const video = mov('video', { contentIdentifier: 'A', capturedAt: '2026-10-03T14:22:11+08:00', lat: 3, lng: 4 });
+    expect(groupLivePhotos([photo, video])[0]).toMatchObject({ capturedAt: '2026-10-03T14:22:11+08:00', lat: 3, lng: 4 });
   });
 
   it('keeps media without an identifier in their original order', () => {
