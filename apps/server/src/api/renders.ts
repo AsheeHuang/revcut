@@ -19,6 +19,7 @@ const SliceParams = z.object({ id: z.uuid(), name: z.string().regex(/^[0-9a-f-]{
 
 const renderDto = (row: RenderRow): Render => ({
   id: row.id,
+  timelineId: row.timelineId,
   state: row.state,
   progress: row.progress,
   error: row.error,

@@ -153,7 +153,7 @@ describe('renders', () => {
       .values({ projectId: project.id, timelineId: timeline.id, snapshot: data, state: 'rendering', progress: 0.42 })
       .returning();
     const res = Render.parse((await call('GET', `/api/renders/${running!.id}`)).json());
-    expect(res).toMatchObject({ state: 'rendering', progress: 0.42, error: null, downloadUrl: null, finishedAt: null });
+    expect(res).toMatchObject({ timelineId: timeline.id, state: 'rendering', progress: 0.42, error: null, downloadUrl: null, finishedAt: null });
     expect(errorCode(await call('GET', `/api/renders/${running!.id}/download`))).toBe('NOT_READY');
 
     await testDb.db.update(renders).set({ state: 'done', progress: 1, finishedAt: new Date() }).where(eq(renders.id, running!.id));

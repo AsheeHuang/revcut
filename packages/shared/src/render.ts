@@ -19,6 +19,7 @@ export function isRenderBusy(state: RenderState): boolean {
 
 export const Render = z.object({
   id: z.uuid(),
+  timelineId: z.uuid().nullable(),
   state: RenderState,
   progress: z.number().min(0).max(1),
   error: z.string().nullable(),
