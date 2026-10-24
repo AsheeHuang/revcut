@@ -1,4 +1,3 @@
-import { extensionOf, kindFromExtension } from '@revcut/shared';
 import { useEffect, useReducer, useRef } from 'react';
 import { toRequestError } from './api';
 
@@ -13,8 +12,10 @@ export type Upload = { key: string; file: File } & (
   | { state: 'rejected'; message: string }
 );
 
+export type UploadTarget = { url: (file: File) => string; accepts: (filename: string) => boolean };
+
 type Action =
-  | { type: 'add'; files: File[] }
+  | { type: 'add'; files: File[]; accepts: UploadTarget['accepts'] }
   | { type: 'progress'; key: string; loaded: number }
   | { type: 'finish'; key: string; result: Exclude<Upload, { state: 'queued' | 'uploading' }> }
   | { type: 'retry'; key: string };
@@ -28,7 +29,7 @@ function reducer(uploads: Upload[], action: Action): Upload[] {
         ...uploads,
         ...action.files.map((file): Upload => {
           const key = String(nextKey++);
-          return kindFromExtension(extensionOf(file.name))
+          return action.accepts(file.name)
             ? { key, file, state: 'queued' }
             : { key, file, state: 'rejected', message: '不支援的檔案格式' };
         }),
@@ -42,11 +43,10 @@ function reducer(uploads: Upload[], action: Action): Upload[] {
   }
 }
 
-function send(projectId: string, upload: Upload, dispatch: (action: Action) => void): XMLHttpRequest {
+function send(url: string, upload: Upload, dispatch: (action: Action) => void): XMLHttpRequest {
   const { key, file } = upload;
   const xhr = new XMLHttpRequest();
-  const query = new URLSearchParams({ filename: file.name, lastModified: String(file.lastModified) });
-  xhr.open('POST', `/api/projects/${projectId}/media?${query}`);
+  xhr.open('POST', url);
   // Windows hands .heic files an empty type; the server only records this header.
   xhr.setRequestHeader('content-type', file.type || 'application/octet-stream');
   xhr.upload.onprogress = (event) => dispatch({ type: 'progress', key, loaded: event.loaded });
@@ -61,11 +61,13 @@ function send(projectId: string, upload: Upload, dispatch: (action: Action) => v
   return xhr;
 }
 
-export function useUploads(projectId: string, onUploaded: () => void) {
+export function useUploads(target: UploadTarget, onUploaded: () => void) {
   const [uploads, dispatch] = useReducer(reducer, []);
   const inFlight = useRef(new Map<string, XMLHttpRequest>());
   const onUploadedRef = useRef(onUploaded);
   onUploadedRef.current = onUploaded;
+  const targetRef = useRef(target);
+  targetRef.current = target;
 
   useEffect(() => {
     for (const key of inFlight.current.keys()) {
@@ -77,9 +79,9 @@ export function useUploads(projectId: string, onUploaded: () => void) {
     const free = CONCURRENT_UPLOADS - inFlight.current.size;
     for (const upload of uploads.filter((u) => u.state === 'queued').slice(0, Math.max(0, free))) {
       dispatch({ type: 'progress', key: upload.key, loaded: 0 });
-      inFlight.current.set(upload.key, send(projectId, upload, dispatch));
+      inFlight.current.set(upload.key, send(targetRef.current.url(upload.file), upload, dispatch));
     }
-  }, [uploads, projectId]);
+  }, [uploads]);
 
   useEffect(() => {
     const requests = inFlight.current;
@@ -90,7 +92,7 @@ export function useUploads(projectId: string, onUploaded: () => void) {
 
   return {
     uploads,
-    add: (files: File[]) => dispatch({ type: 'add', files }),
+    add: (files: File[]) => dispatch({ type: 'add', files, accepts: targetRef.current.accepts }),
     retry: (key: string) => dispatch({ type: 'retry', key }),
   };
 }
