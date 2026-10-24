@@ -10,7 +10,9 @@
     "dev": "pnpm --parallel -r dev",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter @revcut/server db:generate",
+    "db:migrate": "pnpm --filter @revcut/server db:migrate"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
