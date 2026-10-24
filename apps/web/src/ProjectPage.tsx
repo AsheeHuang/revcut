@@ -196,15 +196,27 @@ function MediaCard({ item, onChange }: { item: Media; onChange: () => Promise<un
             </div>
           </>
         )}
-        {item.status !== 'failed' && (
-          <label className="flex items-center gap-2 text-slate-600">
-            <input
-              type="checkbox"
-              checked={excluded}
-              onChange={(event) => exclude.mutate(event.target.checked)}
-            />
-            排除
-          </label>
+        {item.status === 'ready' && (
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 text-slate-600">
+              <input
+                type="checkbox"
+                checked={excluded}
+                onChange={(event) => exclude.mutate(event.target.checked)}
+              />
+              排除
+            </label>
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(`刪除「${item.filename}」？`)) remove.mutate();
+              }}
+              disabled={remove.isPending}
+              className="rounded border border-slate-300 px-2 py-0.5 text-red-700 hover:bg-red-50"
+            >
+              刪除
+            </button>
+          </div>
         )}
         {error && <p className="text-red-700">{messageOf(error)}</p>}
       </div>
