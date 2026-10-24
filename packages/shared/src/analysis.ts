@@ -25,9 +25,10 @@ export type AiConfig = z.infer<typeof AiConfig>;
 
 export const DraftEstimateQuery = z.object({ provider: AiProvider.optional() });
 
+// estimatedUsd is null for a model without a known price.
 export const DraftEstimate = z.object({
   reuse: z.boolean(),
-  estimatedUsd: z.number().min(0),
+  estimatedUsd: z.number().min(0).nullable(),
   mediaCount: z.number().int(),
   imageCount: z.number().int(),
 });

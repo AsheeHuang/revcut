@@ -1,4 +1,5 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import { aiRoutes } from './ai';
 import type { ApiDeps } from './deps';
 import { mediaRoutes } from './media';
 import { musicRoutes } from './music';
@@ -14,4 +15,5 @@ export const apiRoutes: FastifyPluginAsyncZod<ApiDeps> = async (app, deps) => {
   await app.register(musicRoutes, deps);
   await app.register(timelineRoutes, deps);
   await app.register(renderRoutes, deps);
+  await app.register(aiRoutes, deps);
 };

@@ -1,6 +1,5 @@
 import { randomInt } from 'node:crypto';
 import {
-  type AiProvider,
   computeTiming,
   DraftBody,
   framesToSec,
@@ -14,11 +13,11 @@ import {
 } from '@revcut/shared';
 import { desc, eq, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
-import { aiConfig, type AiProviders } from '../ai/providers';
 import { HttpError } from '../app';
 import type { Db } from '../db/client';
 import { claimDraft } from '../db/draftState';
 import { media, musicTracks, projects, timelines } from '../db/schema';
+import { configuredProvider } from './ai';
 import type { ApiDeps } from './deps';
 import { visibleMedia } from './dto';
 import { IdParams, loadProject } from './projects';
@@ -59,13 +58,6 @@ async function timelineDetail(db: Db, row: TimelineRow): Promise<TimelineDetail>
     },
     validation: validateTimeline(data, context),
   };
-}
-
-// SPEC §7.1: a draft runs on a provider with an API key; without one it cannot start.
-export function configuredProvider(ai: AiProviders, requested: AiProvider | undefined): AiProvider {
-  const provider = requested ?? aiConfig(ai).defaultProvider;
-  if (!ai.analyzers[provider]) throw new HttpError(422, 'PROVIDER_NOT_CONFIGURED', `沒有設定 ${provider} 的 API key`);
-  return provider;
 }
 
 export async function findTimeline(db: Db, id: string): Promise<TimelineRow> {
