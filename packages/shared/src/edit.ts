@@ -135,11 +135,14 @@ const handlers: Handlers = {
     return withClip(t, clipId, (clip) => ({ ...clip, sourceInSec: floorToFrame(clamp(sec, 0, Math.max(0, latestIn(media, secs[k]!)))) }));
   },
 
-  setCrop: (t, { clipId, crop }) =>
-    withClip(t, clipId, (clip) => {
-      const next = { ...clip.crop, ...crop };
-      return { ...clip, crop: { focusX: clamp(next.focusX, 0, 1), focusY: clamp(next.focusY, 0, 1), zoom: clamp(next.zoom, 1, 3) } };
-    }),
+  setCrop(t, { clipId, crop }) {
+    const current = t.clips.find((clip) => clip.id === clipId)?.crop;
+    if (!current) return t;
+    const merged = { ...current, ...crop };
+    const next = { focusX: clamp(merged.focusX, 0, 1), focusY: clamp(merged.focusY, 0, 1), zoom: clamp(merged.zoom, 1, 3) };
+    const same = next.focusX === current.focusX && next.focusY === current.focusY && next.zoom === current.zoom;
+    return same ? t : withClip(t, clipId, (clip) => ({ ...clip, crop: next }));
+  },
 
   setDate: (t, { clipId, date }) => withClip(t, clipId, (clip) => ({ ...clip, date })),
 

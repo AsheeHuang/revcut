@@ -178,6 +178,7 @@ describe('applyEdit', () => {
     expect(crop({ focusX: 1.4, focusY: -0.2 })).toEqual({ focusX: 1, focusY: 0, zoom: 1 });
     expect(crop({ zoom: 5 }).zoom).toBe(3);
     expect(crop({ zoom: 0.5 }).zoom).toBe(1);
+    expect(run(base, { type: 'setCrop', clipId: a.id, crop: { focusX: 0.5 } })).toBe(base);
   });
 
   it('edits or hides the date', () => {
