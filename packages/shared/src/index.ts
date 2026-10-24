@@ -10,3 +10,6 @@ export * from './timeline';
 export * from './timing';
 export * from './validate';
 export * from './planner';
+export * from './draft';
+export * from './render';
+export * from './timelineApi';
