@@ -134,7 +134,6 @@ function wallToInstant(wall: number, timeZone: string): number {
   return wall - zoneOffsetMin(timeZone, guess) * 60_000;
 }
 
-// SPEC §6.2 step 2.
 export function resolveCaptureTime({
   tags,
   gps,

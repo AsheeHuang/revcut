@@ -123,8 +123,6 @@ export function createIngestQueue({
   return {
     enqueue,
 
-    // SPEC §6.1 startup: nothing is running yet, so every .part, .tmp and
-    // processing row is left over from the previous process.
     async recover() {
       const removed = await removeStrays(dataDir);
       const restart = { from: 'processing', to: 'uploaded' } as const satisfies MediaTransition;

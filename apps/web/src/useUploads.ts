@@ -61,7 +61,6 @@ function send(projectId: string, upload: Upload, dispatch: (action: Action) => v
   return xhr;
 }
 
-// SPEC §5.2: list the files first, upload three at a time, keep the File so a failure can be retried.
 export function useUploads(projectId: string, onUploaded: () => void) {
   const [uploads, dispatch] = useReducer(reducer, []);
   const inFlight = useRef(new Map<string, XMLHttpRequest>());

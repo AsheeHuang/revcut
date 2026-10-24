@@ -37,7 +37,6 @@ function byCaptureTime(a: Media, b: Media): number {
   return a.filename.localeCompare(b.filename);
 }
 
-// Rows of one project in, the media cards the user sees out (SPEC §4.4, §11.2).
 export function visibleMedia(rows: MediaRow[]): Media[] {
   return groupLivePhotos(rows.map(toMediaRecord))
     .map(({ contentIdentifier: _, ...item }) => item)
