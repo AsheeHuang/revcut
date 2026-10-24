@@ -5,3 +5,4 @@ export * from './media';
 export * from './livePhoto';
 export * from './constants';
 export * from './section';
+export * from './music';
