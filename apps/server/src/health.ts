@@ -102,19 +102,6 @@ export function createHealthChecks(config: Config, sql: Sql): HealthChecks {
         return { ok: true, detail: `exiftool ${version.trim()}` };
       },
     },
-    heifConvert: {
-      required: true,
-      timeoutMs: 5000,
-      run: async (signal) => {
-        // heif-convert 1.12 has no version or help flag that exits 0, so look it up on PATH instead.
-        try {
-          const { stdout } = await runProcess('which', ['heif-convert'], { signal });
-          return { ok: true, detail: stdout.trim() };
-        } catch {
-          return { ok: false, detail: '找不到 heif-convert，請安裝：sudo apt install libheif-examples' };
-        }
-      },
-    },
     analyzer: {
       required: true,
       timeoutMs: 60_000,
@@ -147,6 +134,5 @@ export function createHealthChecks(config: Config, sql: Sql): HealthChecks {
     },
     anthropicKey: apiKey(config.anthropicApiKey, 'ANTHROPIC_API_KEY'),
     openaiKey: apiKey(config.openaiApiKey, 'OPENAI_API_KEY'),
-    googleMapsKey: apiKey(config.googleMapsApiKey, 'GOOGLE_MAPS_API_KEY'),
   };
 }

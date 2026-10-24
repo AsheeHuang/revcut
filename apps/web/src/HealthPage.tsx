@@ -7,12 +7,10 @@ const LABELS: Record<HealthCheckName, string> = {
   ffmpeg: 'ffmpeg',
   ffprobe: 'ffprobe',
   exiftool: 'exiftool',
-  heifConvert: 'heif-convert',
   analyzer: 'Python analyzer',
   remotionBrowser: 'Remotion 瀏覽器',
   anthropicKey: 'Anthropic API key',
   openaiKey: 'OpenAI API key',
-  googleMapsKey: 'Google Maps API key',
 };
 
 const MARKS = {

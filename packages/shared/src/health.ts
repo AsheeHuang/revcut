@@ -6,12 +6,10 @@ export const HealthCheckName = z.enum([
   'ffmpeg',
   'ffprobe',
   'exiftool',
-  'heifConvert',
   'analyzer',
   'remotionBrowser',
   'anthropicKey',
   'openaiKey',
-  'googleMapsKey',
 ]);
 export type HealthCheckName = z.infer<typeof HealthCheckName>;
 

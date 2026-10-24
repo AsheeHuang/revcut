@@ -34,7 +34,6 @@ const Env = z
       .refine(isTimeZone, { error: '不是有效的 IANA 時區' }),
     ANTHROPIC_API_KEY: optionalKey,
     OPENAI_API_KEY: optionalKey,
-    GOOGLE_MAPS_API_KEY: optionalKey,
   })
   .transform((env) => ({
     databaseUrl: env.DATABASE_URL,
@@ -44,7 +43,6 @@ const Env = z
     defaultTz: env.DEFAULT_TZ,
     anthropicApiKey: env.ANTHROPIC_API_KEY,
     openaiApiKey: env.OPENAI_API_KEY,
-    googleMapsApiKey: env.GOOGLE_MAPS_API_KEY,
   }));
 
 export type Config = z.output<typeof Env>;
