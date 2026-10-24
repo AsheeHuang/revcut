@@ -1,0 +1,27 @@
+{
+  "id": "msg_fixture",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-opus-5-5",
+  "content": [
+    {
+      "type": "thinking",
+      "thinking": "",
+      "signature": "EqQBfixture"
+    },
+    {
+      "type": "text",
+      "text": "{\"media\":[{\"ref\":\"m1\",\"score\":\"high\"}]}"
+    }
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "stop_details": null,
+  "usage": {
+    "input_tokens": 15000,
+    "output_tokens": 500,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "iterations": null
+  }
+}

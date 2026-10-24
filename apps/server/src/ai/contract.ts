@@ -1,14 +1,17 @@
 import type { MediaAnalysis, MediaKind, Moment } from '@revcut/shared';
 import { z } from 'zod';
 
-// SPEC §7.4: what the model must return. Ranges are not part of the wire schema;
-// resolveVerdicts clamps them, because a near miss is still a useful answer.
+// meta() puts a range into the JSON schema the model sees without validating it:
+// resolveVerdicts clamps instead, because a near miss is still a useful answer (SPEC §7.4).
+const Score = z.number().int().meta({ minimum: 1, maximum: 10 });
+const Unit = z.number().meta({ minimum: 0, maximum: 1 });
+
 export const MediaVerdict = z.object({
   ref: z.string(),
   usable: z.boolean(),
-  score: z.number().int(),
+  score: Score,
   description: z.string(),
-  moments: z.array(z.object({ t: z.number(), score: z.number().int(), focusX: z.number(), focusY: z.number() })),
+  moments: z.array(z.object({ t: z.number().meta({ minimum: 0 }), score: Score, focusX: Unit, focusY: Unit })),
   duplicateOf: z.string().nullable(),
 });
 export const AnalysisResult = z.object({ media: z.array(MediaVerdict) });
