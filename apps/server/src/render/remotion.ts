@@ -27,7 +27,8 @@ function bundled(): Promise<string> {
   return serveUrl;
 }
 
-// SPEC §6.5: h264 at CRF 18 in yuv420p with AAC at 320k.
+// SPEC §6.5: h264 at CRF 18 in yuv420p with AAC at 320k. BT.709 is Remotion 5's default; Remotion 4's
+// default converts with BT.601 and leaves the matrix untagged, which players read as BT.709 and shift skin tones.
 export const renderWithRemotion: RenderVideo = async ({ props, output, signal, onProgress }) => {
   const url = await bundled();
   const composition = await selectComposition({ serveUrl: url, id: COMPOSITION_ID, inputProps: props });
@@ -38,6 +39,7 @@ export const renderWithRemotion: RenderVideo = async ({ props, output, signal, o
     codec: 'h264',
     crf: 18,
     pixelFormat: 'yuv420p',
+    colorSpace: 'bt709',
     audioCodec: 'aac',
     audioBitrate: '320k',
     outputLocation: output,
