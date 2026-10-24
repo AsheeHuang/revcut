@@ -46,6 +46,7 @@ beforeEach(async () => {
     enqueueIngest: (id) => enqueued.push(id),
     enqueueAnalyze: () => {},
     enqueueDraft: () => {},
+    enqueueRender: () => {},
   });
   return async () => {
     await app.close();

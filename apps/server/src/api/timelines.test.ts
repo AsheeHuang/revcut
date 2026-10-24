@@ -39,6 +39,7 @@ beforeEach(async () => {
     enqueueIngest: () => {},
     enqueueAnalyze: () => {},
     enqueueDraft: (request) => drafts.push(request),
+    enqueueRender: () => {},
   });
   return async () => {
     await app.close();

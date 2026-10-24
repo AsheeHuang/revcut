@@ -8,4 +8,5 @@ export type ApiDeps = {
   enqueueIngest: (mediaId: string) => void;
   enqueueAnalyze: (trackId: string) => void;
   enqueueDraft: (request: DraftRequest) => void;
+  enqueueRender: (renderId: string) => void;
 };

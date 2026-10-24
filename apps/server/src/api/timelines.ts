@@ -59,7 +59,7 @@ async function timelineDetail(db: Db, row: TimelineRow): Promise<TimelineDetail>
   };
 }
 
-async function findTimeline(db: Db, id: string): Promise<TimelineRow> {
+export async function findTimeline(db: Db, id: string): Promise<TimelineRow> {
   const [row] = await db.select().from(timelines).where(eq(timelines.id, id));
   if (!row) throw new HttpError(404, 'NOT_FOUND', '找不到這個版本');
   return row;

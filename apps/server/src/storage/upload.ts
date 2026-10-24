@@ -53,3 +53,9 @@ export async function removeMusicStrays(dataDir: string): Promise<string[]> {
   const dir = path.join(dataDir, 'music');
   return [...(await removeEndingIn(dir, '.part')), ...(await removeEndingIn(dir, '.tmp'))];
 }
+
+export async function removeRenderStrays(dataDir: string): Promise<string[]> {
+  const projects = await readdir(path.join(dataDir, 'projects')).catch(() => []);
+  const removed = await Promise.all(projects.map((project) => removeEndingIn(path.join(dataDir, 'projects', project, 'renders'), '.tmp')));
+  return removed.flat();
+}

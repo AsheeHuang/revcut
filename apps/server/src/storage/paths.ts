@@ -25,3 +25,15 @@ export function musicPaths(dataDir: string, track: { id: string; ext: string }) 
   const tmp = path.join(dir, `${track.id}.tmp`);
   return { file: path.join(dir, `${track.id}.${track.ext}`), tmp, wav: path.join(tmp, 'song.wav') };
 }
+
+// SPEC §5.1: slices and the unfinished MP4 live in renders/{renderId}.tmp/ until the render is done.
+export function renderPaths(dataDir: string, projectId: string, renderId: string) {
+  const dir = path.join(projectDir(dataDir, projectId), 'renders');
+  const tmp = path.join(dir, `${renderId}.tmp`);
+  return {
+    output: path.join(dir, `${renderId}.mp4`),
+    tmp,
+    draft: path.join(tmp, 'out.mp4'),
+    slice: (clipId: string) => path.join(tmp, `${clipId}.mp4`),
+  };
+}

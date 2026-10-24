@@ -43,6 +43,7 @@ async function start(enqueueAnalyze: (id: string) => void) {
     enqueueIngest: () => {},
     enqueueAnalyze,
     enqueueDraft: () => {},
+    enqueueRender: () => {},
   });
 }
 
