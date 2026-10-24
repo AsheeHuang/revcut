@@ -1,7 +1,7 @@
 # revcut 規格書（SPEC）
 
-> 版本：v0.5.2（2026-10-24）
-> 狀態：第 0–2 期完成並合併，第 3 期實作完成、待驗收
+> 版本：v0.5.3（2026-10-24）
+> 狀態：第 0–3 期完成並合併，第 4 期實作完成、待驗收
 > 一句話：單人自用的網頁，把自己挑好的一段時間（一個月、幾個月或任意期間）的影片和照片，自動排成一支對拍、直式、20–25 秒的 IG Reels，手動微調後再匯出。
 >
 > 變更紀錄：
@@ -10,6 +10,7 @@
 > - v0.4：依對抗式審查修正。修正匯出偏移、說話片段範圍、重複偵測、Live Photo 配對、拍點對齊和排版演算法；拿掉 pg-boss；上傳改成一步完成；時間軸版本直接修改；排版程式移到 `packages/shared`。
 > - v0.5.1：記錄第 2 期的發現（BPM 計算方式、小節長度的算法）。
 > - v0.5.2：記錄第 3 期的發現。拍長改用段落平均；太短的影片在分配拍數前就限制上限；影片起點對齊整格；算圖取樣點、混音淡入淡出的精度；算圖並行數、快取和色彩空間；匯出紀錄帶版本 id。
+> - v0.5.3：記錄第 4 期的發現。OpenAI 選定 `gpt-6-astra`，補上它的限制、計價和實測費用；重用分析指同一家、同一個模型最新一次完成的分析；分數和焦點的範圍寫進 schema 但不驗證，收到後夾回；prompt 加上瞬間相隔 3 秒；費用估算依實測校正，OpenAI 的 prompt 以快取寫入計價。
 > - v0.5：縮小 MVP，拿掉地名和字幕（連同 Whisper 語音辨識與說話片段）；HEIC 改用 `heic-decode` 解碼；Live Photo 照片端的 ID 標籤改為 `Apple:MediaGroupUUID`。
 
 ---
@@ -93,7 +94,7 @@
 | 檔案儲存 | 本機磁碟（WSL 檔案系統內的 `DATA_DIR`） | 原檔本來就在 NAS，本機只放這次要用的複本 |
 | 媒體工具 | ffmpeg（必須含 `zscale`/libzimg）、exiftool、`heic-decode`（libheif 1.23 的 WASM 版）、sharp | 系統的 libheif 1.12 讀不了 iPhone 16 Pro 的 HEIC（10 張失敗 9 張），所以改用 npm 套件 |
 | 音訊分析 | Python 3.12 + uv：beat_this（拍點） | |
-| AI | Anthropic TypeScript SDK（預設 `claude-opus-5-5`）、OpenAI Node SDK（模型由設定決定） | 兩家可切換，共用同一份 prompt 和輸出格式（§7） |
+| AI | Anthropic TypeScript SDK（預設 `claude-opus-5-5`）、OpenAI Node SDK（`OPENAI_MODEL`，第 4 期選定 `gpt-6-astra`） | 兩家可切換，共用同一份 prompt 和輸出格式（§7） |
 | 時區 | `@photostructure/tz-lookup`（由 GPS 推算時區） | |
 
 ### 2.3 Repo 結構（pnpm workspaces）
@@ -512,14 +513,17 @@ DATA_DIR/
 **步驟**：
 
 1. **`analyzing`**：
-   - **可以重用的條件**：最新一次 `status='done'` 的分析，供應商和模型都和這次相同，而且它分析過的素材包含這次全部的素材（未排除、處理完成、不含被 Live Photo 影片取代的照片）。這次沒有指定 `reanalyze`。
+   - **可以重用的條件**：同一家供應商、同一個模型最新一次 `status='done'` 的分析，它分析過的素材包含這次全部的素材（未排除、處理完成、不含被 Live Photo 影片取代的照片）。這次沒有指定 `reanalyze`。模型比的是 `analysis_runs.model`（實際回應的模型），所以由備援模型完成的分析不會被重用。
    - 可以重用時，只取這次素材的結果；`duplicateOf` 指向不在這次素材裡的，當作沒有重複。
-   - 不能重用時，從預覽檔抽畫面，呼叫選定的 AI 供應商（§7）。
-   - 就算每支影片只送 2 張畫面仍超過供應商的限制，就失敗並說明「素材太多」。
+   - 不能重用時，從預覽檔抽畫面，呼叫選定的 AI 供應商（§7）。先寫入一筆 `running` 的 `analysis_runs`；成功時在同一個 transaction 寫入結果、每個素材的 `media_analysis`，並把狀態改成 `planning`。失敗時這筆改成 `failed`，仍記錄已花的 token 和費用。
+   - 就算每支影片只送 2 張畫面仍超過供應商的限制，就失敗並說明「素材太多」，不呼叫 AI。
+   - 送出前的檢查：選定的供應商必須有 API key，否則 POST 回 422 `PROVIDER_NOT_CONFIGURED`。
 2. **`planning`**：執行排版程式（§8），寫入新的 `timelines`，並更新 `current_timeline_id`。排版程式回傳「素材不足」等錯誤時，draft 失敗並顯示原因。
 3. 狀態改成 `done`。
 
 **費用提示**：前端在按鈕旁邊呼叫 `GET /api/projects/:id/draft-estimate`。不能重用分析時，顯示預估費用。
+
+啟動時，停在 `running` 的 `analysis_runs` 也一起改成 `failed`。
 
 ### 6.5 `timeline.render`：匯出
 
@@ -570,15 +574,21 @@ interface VisionAnalyzer {
 | 項目 | Anthropic | OpenAI |
 |---|---|---|
 | SDK | `@anthropic-ai/sdk` | `openai` |
-| 模型 | `claude-opus-5-5` | `OPENAI_MODEL`：Phase 4 時選定當時最新、支援影像輸入和結構化輸出的 GPT 模型 |
-| 圖片 | image block（base64 JPEG） | Responses API 的圖片輸入（base64 data URL） |
+| 模型 | `claude-opus-5-5` | `OPENAI_MODEL`：第 4 期選定 `gpt-6-astra`，OpenAI 模型頁稱它為旗艦模型，支援影像輸入和結構化輸出（2026-10-24 確認） |
+| 圖片 | image block（base64 JPEG） | Responses API 的 `input_image`（base64 data URL，`detail: "high"`） |
 | 結構化輸出 | `output_config.format` + zod，收到後再用 zod 驗證一次 | JSON Schema strict 模式，收到後再用 zod 驗證一次 |
-| 思考深度 | adaptive thinking，effort `medium` | reasoning effort `medium`（模型支援的話） |
-| 傳輸 | streaming，`max_tokens` 64000（思考也算在內，素材多時輸出很長） | 依 SDK 建議 |
+| 思考深度 | adaptive thinking，`output_config.effort` 取 `ANTHROPIC_EFFORT`（預設 `medium`） | `reasoning.effort` 取 `OPENAI_REASONING_EFFORT`（預設 `medium`；`gpt-6-astra` 支援 low–max） |
+| 傳輸 | streaming，`finalMessage()`，`max_tokens` 64000（思考也算在內，素材多時輸出很長） | `responses.create`（不串流），`max_output_tokens` 64000，`store: false` |
 | 備援 | server-side fallback：`fallbacks: "default"` 加上 beta header `server-side-fallback-2026-07-01`。遇到安全分類器誤擋時，自動改用其他 Claude 模型 | 無 |
-| 限制 | 每個 request 最多 600 張圖；超過 20 張時每張長寬 ≤ 2000 px；request ≤ 32 MB | Phase 4 依 OpenAI 官方文件確認，由 adapter 檢查 |
+| 限制 | 每個 request 最多 600 張圖；超過 20 張時每張長寬 ≤ 2000 px；request ≤ 32 MB | 每個 request 最多 1,500 張圖、512 MB；每張圖最多 30,000 個 patch（OpenAI images-vision 指南，2026-10-24）。640 px 的畫面最多 400 個 patch |
+| 拒絕和截斷 | `stop_reason` 為 `refusal`（附 `stop_details.category`）、`max_tokens` 或 `model_context_window_exceeded` | `status` 不是 `completed`（`incomplete_details.reason` 為 `max_output_tokens` 或 `content_filter`），或輸出含 `refusal` |
 
 兩家都是**每次分析只發一個 request，包含全部素材**，讓 AI 能跨素材比較好壞、找出重複的畫面。
+
+- 兩家的 adapter 都只把 zod schema 轉成 JSON Schema 送出，收到後先檢查拒絕和截斷，再用 zod 驗證。SDK 自帶的解析會在讀到被截斷的 JSON 時直接丟錯，看不到 `stop_reason`。
+- Anthropic 中途改由備援模型回答時，回應裡會留著被拒絕那段的部分文字，答案只取最後一個 `fallback` block 之後的文字。費用依 `usage.iterations` 每一段的模型分別計價。還沒輸出就被擋、而且屬於不計費類別的那一段也算進去，所以這時記錄的費用是上限。
+- 送出前由共用的檢查算出實際張數和 request 大小（base64 後），超過該供應商的限制就失敗，不送出。
+- HTTP 401／403 顯示「API key 無效或沒有權限」，429 顯示「流量限制或額度不足」。
 
 ### 7.2 輸入組成
 
@@ -598,6 +608,8 @@ interface VisionAnalyzer {
 - **影片抽幾張畫面**：張數 n = clamp(ceil(長度 / 1.5), 2, 8)，時間點 tᵢ = (i + 0.5) × 長度 / n，從 SDR 預覽檔抽出。
 - **畫面規格**：長邊 640 px，JPEG 品質 80。照片只送一張。
 - **送出前的保護**：先估算 token 數和 request 大小。如果超過 300k token，或超過該供應商的限制（§7.1），就降低每支影片的畫面張數再送。
+  - 估算在抽畫面之前進行，用素材的尺寸算出畫面尺寸。文字以每字 1 token 計，每個素材加 40、每張畫面加 8 token；JPEG 以每像素 0.35 byte 估算（真實預覽檔抽出的畫面在 q80 時是 0.15–0.32），再乘上 base64 的 4/3。
+  - 第 4 期實測：「2026 一月」9 個素材、33 張畫面，估算 10,895 input token，OpenAI 回報 10,674。
 
 ### 7.3 Prompt 重點
 
@@ -609,10 +621,12 @@ interface VisionAnalyzer {
 - `usable=false`：明顯模糊、誤拍、全黑、手指擋到鏡頭。
 - `moments`：
   - 影片挑 1–3 個最值得用的瞬間，照片挑 1 個
+  - 影片夠長時，瞬間要是不同的畫面，彼此相隔至少 3 秒（排版程式只會用相隔 3 秒以上的第二個瞬間，§8.2 第 4 步）
   - `focusX`/`focusY` 是主體在原始畫面中的位置，直式裁切會以這個點為中心
 - `duplicateOf`：同一場景幾乎一樣的兩個素材，把比較差的那個標記為重複。
 - `description` 用繁體中文，30 字以內。
 - 不辨識、也不命名畫面中的人物。
+- 最後的任務說明寫出素材的拍攝期間和數量，例如「這批素材拍攝於 2026-01-08 到 2026-01-31，共 9 個素材」，讓模型判斷什麼能代表這段期間。
 
 ### 7.4 輸出 schema
 
@@ -633,17 +647,21 @@ const MediaVerdict = z.object({
 const AnalysisResult = z.object({ media: z.array(MediaVerdict) });
 ```
 
+分數（1–10）、焦點（0–1）和 `t`（≥ 0）的範圍用 zod 的 `meta()` 寫進送出的 JSON Schema，讓模型知道範圍，但驗證時不檢查。超出範圍的回答仍然有用，所以夾回範圍，而不是當作格式不符重試。
+
 收到結果後的處理：
 
-- 把短代號對回 uuid
-- 超出範圍的數值夾回合法範圍
-- 某個素材沒有出現在結果裡時，給預設值：分數 5、焦點在畫面中央
+- 把短代號對回 uuid；不認得的代號忽略，同一個代號出現兩次取第一筆
+- 超出範圍的數值夾回合法範圍：分數夾到 1–10，焦點夾到 0–1，影片的 `t` 夾到 0 到影片長度，照片的 `t` 一律為 0
+- 影片只留分數最高的 3 個瞬間，照片只留 1 個；沒有任何瞬間時，用素材中間、畫面中央當瞬間
+- 某個素材沒有出現在結果裡時，給預設值：可用、分數 5、焦點在畫面中央，描述為「AI 沒有回傳這個素材的分析」
+- `duplicateOf` 指向不在這次素材裡的代號，或指向自己時，當作沒有重複
 - 模型拒絕回答或輸出被截斷時（Anthropic 的 `stop_reason` 為 `refusal` 或 `max_tokens`，OpenAI 則看對應的狀態），這次分析失敗並顯示原因
 - 結果不符合 schema 時重試一次
 
 ### 7.5 費用估算
 
-以下用 Anthropic 估算。OpenAI 的圖片計費方式不同，Phase 4 實測後補上。
+以下先用 Anthropic 估算，OpenAI 的計費方式和第 4 期的實測在後面。
 
 - 每張圖的 token 數 = ⌈寬 / 28⌉ × ⌈高 / 28⌉
   - 640×360 的影片畫面 ≈ 299 token
@@ -655,9 +673,18 @@ const AnalysisResult = z.object({ media: z.array(MediaVerdict) });
 - 素材只減少、沒有新增時，會重用上次的分析（§6.4），不會再花錢。
 - 費用依實際回應的模型計算。備援模型的價格可能不同。
 
+**OpenAI（`gpt-6-astra`，2026-10-24 的價格）**
+
+- 每百萬 token：input $10、cached input $1、cache write $12.5、output $50。單次 input 超過 272k token 時整個 request 改用長文計價（input 和快取 2 倍、output 1.5 倍）。
+- 每張圖的 token 數 = ⌈寬 / 32⌉ × ⌈高 / 32⌉ × 1.2，取整數。360×640 的影片畫面 = 288 token。
+- `gpt-6-astra` 預設會把每個 request 的 prompt 寫進快取，並以 cache write 的價格計費（$12.5，比一般 input 貴 25%）。回應的 `prompt_cache_retention` 是 `24h`。
+- **第 4 期實測**：「2026 一月」9 個素材（7 支影片、2 張照片）、33 張畫面。input 10,674 token（其中 10,671 是快取寫入），output 1,216 token（其中思考 105），花了 **US$0.1942**，處理 13 秒。
+- 估算的 output 依實測校正為 1,000 + 每個素材 150 token（9 個素材 2,350，約實測的兩倍；80 個素材 13,000）。OpenAI 的 prompt 以 cache write 計價。同一批素材現在估算 US$0.25；校正前估 US$0.35。
+- 每個 request 都寫快取其實沒有用處（只有格式不符重試時會讀到）。`prompt_cache_options.mode: "explicit"` 可以關掉自動快取，省下約 US$0.03，但還沒實測，先不改。
+
 ### 7.6 隱私
 
-抽出的畫面會送到選定的供應商。Anthropic 文件說明上傳的圖片不會用來訓練模型；OpenAI 的 API 資料政策以其官方條款為準。原檔不會送出。
+抽出的畫面會送到選定的供應商。Anthropic 文件說明上傳的圖片不會用來訓練模型；OpenAI 的 API 資料政策以其官方條款為準。原檔不會送出。OpenAI 的 request 帶 `store: false`，不保留回應；prompt 快取仍由 OpenAI 依 `prompt_cache_retention`（24 小時）處理。
 
 ---
 
@@ -682,6 +709,8 @@ MAX_CLIPS_PER_DAY = 3
 **輸入**：處理完成、未排除的素材（已套用 Live Photo 分組）和它們的 AI 分析結果、歌曲的 beats/downbeat 索引/energy、可選的 `startBeat`、seed。
 
 AI 分析結果是選填的。沒有分析時（第 3 期還沒有 AI），每個素材都當作可用、分數 5、唯一的瞬間在影片中間（照片為 0）、焦點在畫面中央、沒有重複。因為只有一個瞬間，第 4 步不會補第二個瞬間，素材少時總長會低於 20 秒並由驗證規則警告。第 4 期把真正的分析結果傳進同一個函式。
+
+第 4 期實測（「2026 一月」9 個素材，New Light 123.71 BPM，bmin 2、bmax 4、T = 48）：AI 給 3 支影片相隔 3 秒以上的第二個瞬間，候選數 12 = ⌈48 / 4⌉。兩支 Live Photo 影片只有 1.9 和 1.8 秒，上限 3 拍，拍數上限加起來 46 < 48，所以減 1 小節，T = 44，總長 21.3 秒、12 段、沒有警告。沒有 AI 時同一批素材是 9 段、15.5 秒。
 
 1. **決定音樂段落**
    - 每小節拍數 = 相鄰重拍索引差的眾數（通常是 4）。
@@ -878,9 +907,9 @@ type CompositionProps = {
 {
   "aiProviders": [
     { "id": "anthropic", "model": "claude-opus-5-5", "available": true },
-    { "id": "openai", "model": "…", "available": false }
+    { "id": "openai", "model": "gpt-6-astra", "available": false }
   ],
-  "defaultProvider": "anthropic"
+  "defaultProvider": "anthropic"   // AI_PROVIDER；它沒有 API key 時改用第一個可用的供應商
 }
 ```
 
@@ -888,6 +917,9 @@ type CompositionProps = {
 
 ```jsonc
 { "reuse": false, "estimatedUsd": 0.82, "mediaCount": 64, "imageCount": 360 }
+// 可以重用時：{ "reuse": true, "estimatedUsd": 0, "mediaCount": 64, "imageCount": 0 }
+// estimatedUsd 為 null：這個模型沒有已知的價格
+// 422 PROVIDER_NOT_CONFIGURED：這家沒有 API key；422 TOO_MANY_MEDIA：每支影片 2 張畫面仍超過上限
 ```
 
 **GET /api/timelines/:id**
@@ -992,7 +1024,7 @@ type CompositionProps = {
 - **Undo／Redo**：保留最近 100 步，只在當次頁面有效。
 - **自動儲存**：停止操作 1 秒後，直接存回目前版本。
 - **版本選單**：切換不同的時間軸版本。
-- **AI 重排**：用新的 seed 產生新版本，也可以改選 AI 供應商。需要重新分析時先顯示預估費用。目前的修改會留在原本的版本。
+- **AI 重排**：用新的 seed 產生新版本，沿用目前版本的歌和起點，也可以改選 AI 供應商。需要重新分析時先顯示預估費用。目前的修改會留在原本的版本。
 - **匯出**：
   - 按下後先送出還沒儲存的修改，再開始匯出
   - 顯示進度條
@@ -1033,7 +1065,7 @@ ANTHROPIC_API_KEY=
 ANTHROPIC_MODEL=claude-opus-5-5
 ANTHROPIC_EFFORT=medium
 OPENAI_API_KEY=
-OPENAI_MODEL=                         # Phase 4 選定
+OPENAI_MODEL=                         # 填 gpt-6-astra（第 4 期選定）
 OPENAI_REASONING_EFFORT=medium
 DATA_DIR=                             # 留空就是 ~/.revcut/data；要改請寫絕對路徑（.env 不會展開 ~）
 HOST_DRIVE=/mnt/c                     # WSL 虛擬硬碟所在的 Windows 磁碟，用來檢查真正的剩餘空間

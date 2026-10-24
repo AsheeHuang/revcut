@@ -122,7 +122,7 @@ uv run --project analyzer python -m analyzer beats --input song.wav      # run b
 |---|---|
 | `AI_PROVIDER` | Default AI provider: `anthropic` or `openai` |
 | `ANTHROPIC_API_KEY` | Anthropic API key, from the Claude Console (billed separately from a Claude subscription) |
-| `OPENAI_API_KEY`, `OPENAI_MODEL` | OpenAI API key and model |
+| `OPENAI_API_KEY`, `OPENAI_MODEL` | OpenAI API key and model. Phase 4 picked `gpt-6-astra`; OpenAI stays unavailable until both are set |
 | `DATA_DIR` | Where all media and renders are stored. Leave empty for `~/.revcut/data`. To change it, write an absolute path, because `.env` does not expand `~` |
 | `HOST_DRIVE` | The Windows drive that holds the WSL virtual disk, default `/mnt/c`. Used to check real free space |
 
