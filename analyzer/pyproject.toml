@@ -2,10 +2,26 @@
 name = "analyzer"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+    "beat-this>=1.1",
+    "numpy>=2",
+    "soundfile>=0.13",
+    "torch>=2.4",
+    "torchaudio>=2.4",
+]
 
 [dependency-groups]
 dev = ["pytest>=8"]
+
+# No GPU is assumed (SPEC §12), and the CPU wheels are a fraction of the CUDA download.
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchaudio = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [build-system]
 requires = ["uv_build>=0.11,<0.12"]

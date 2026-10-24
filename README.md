@@ -79,7 +79,7 @@ ffmpeg -hide_banner -filters | grep zscale
 
 ```bash
 pnpm install
-uv sync --project analyzer      # downloads PyTorch on first run; takes a while
+uv sync --project analyzer      # downloads CPU-only PyTorch on first run; takes a while
 cp .env.example .env            # fill in API keys, see "Environment variables"
 docker compose up -d            # start Postgres
 pnpm db:migrate                 # create tables
@@ -128,6 +128,7 @@ uv run --project analyzer python -m analyzer beats --input song.wav      # run b
 
 ## Notes
 
+- The first beat analysis downloads the beat_this model weights (about 80 MB) into `~/.cache/torch/hub/checkpoints/`.
 - `DATA_DIR` must live inside the WSL filesystem. Putting it under `/mnt/c` or on the NAS makes disk access very slow.
 - The server listens on `127.0.0.1` only and has no login. Don't expose it to the network.
 - Inside WSL, `df` reports the virtual disk's maximum size, not the free space left on the Windows drive. The server checks both `DATA_DIR` and `HOST_DRIVE` and uses the smaller number.
