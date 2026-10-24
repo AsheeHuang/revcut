@@ -117,7 +117,9 @@ export function createIngestQueue({
   function enqueue(id: string) {
     queue
       .add(() => ingest(id))
-      .catch((error: unknown) => log.error({ err: error, mediaId: id }, 'media.ingest crashed'));
+      .catch((error: unknown) => {
+        if (!shutdown.signal.aborted) log.error({ err: error, mediaId: id }, 'media.ingest crashed');
+      });
   }
 
   return {

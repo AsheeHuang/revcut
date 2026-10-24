@@ -139,12 +139,22 @@ describe('music.analyze', () => {
     expect(existsSync(analyzing.paths.tmp)).toBe(false);
   });
 
-  it('leaves an interrupted track analyzing when the server shuts down', async () => {
-    const { row } = await addTrack();
-    const music = queue((_file, signal) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason))));
-    music.enqueue(row.id);
-    await expect.poll(async () => (await load(row.id)).status).toBe('analyzing');
+  it('on shutdown leaves the running track analyzing and the waiting one uploaded, logging no errors', async () => {
+    const running = await addTrack();
+    const waiting = await addTrack();
+    const errors: unknown[] = [];
+    const music = createMusicQueue({
+      db: testDb.db,
+      dataDir,
+      analyzeBeats: (_file, signal) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason))),
+      log: { info: () => {}, error: (...args: unknown[]) => errors.push(args) },
+    });
+    music.enqueue(running.row.id);
+    music.enqueue(waiting.row.id);
+    await expect.poll(async () => (await load(running.row.id)).status).toBe('analyzing');
     await music.close();
-    expect(await load(row.id)).toMatchObject({ status: 'analyzing', error: null });
+    expect(await load(running.row.id)).toMatchObject({ status: 'analyzing', error: null });
+    expect((await load(waiting.row.id)).status).toBe('uploaded');
+    expect(errors).toEqual([]);
   });
 });

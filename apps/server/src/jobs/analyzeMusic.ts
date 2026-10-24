@@ -100,7 +100,9 @@ export function createMusicQueue({
   function enqueue(id: string) {
     queue
       .add(() => analyze(id))
-      .catch((error: unknown) => log.error({ err: error, trackId: id }, 'music.analyze crashed'));
+      .catch((error: unknown) => {
+        if (!shutdown.signal.aborted) log.error({ err: error, trackId: id }, 'music.analyze crashed');
+      });
   }
 
   return {
