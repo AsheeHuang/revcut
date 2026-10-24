@@ -3,6 +3,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createBrowserRouter, Link, Outlet } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
+import { EditorPage } from './EditorPage';
 import { HealthPage } from './HealthPage';
 import { MusicPage } from './MusicPage';
 import { ProjectPage } from './ProjectPage';
@@ -34,6 +35,7 @@ const router = createBrowserRouter([
     children: [
       { path: '/', element: <ProjectsPage /> },
       { path: '/projects/:id', element: <ProjectPage /> },
+      { path: '/projects/:id/edit', element: <EditorPage /> },
       { path: '/music', element: <MusicPage /> },
       { path: '/health', element: <HealthPage /> },
     ],
