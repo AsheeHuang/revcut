@@ -1,11 +1,10 @@
-import { isDraftBusy, MusicTrack, Project } from '@revcut/shared';
+import { type AiProvider, isDraftBusy, MusicTrack, Project } from '@revcut/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { api, messageOf } from './api';
+import { AiChoice, DraftProgress, useAiChoice } from './DraftControls';
 import { SectionPlayer } from './SectionPlayer';
-
-const PROGRESS = { queued: '排隊中…', analyzing: 'AI 分析中…', planning: '排版中…' } as const;
 
 export function DraftPanel({ project }: { project: Project }) {
   const queryClient = useQueryClient();
@@ -13,9 +12,10 @@ export function DraftPanel({ project }: { project: Project }) {
   const ready = tracks.data?.filter((track) => track.status === 'ready') ?? [];
   const [chosen, setChosen] = useState<string | null>(null);
   const track = ready.find((t) => t.id === chosen) ?? ready[0];
+  const choice = useAiChoice(project);
   const draft = useMutation({
-    mutationFn: (trackId: string) =>
-      api(Project, `/api/projects/${project.id}/draft`, { method: 'POST', body: { trackId } }),
+    mutationFn: ({ trackId, provider }: { trackId: string; provider: AiProvider }) =>
+      api(Project, `/api/projects/${project.id}/draft`, { method: 'POST', body: { trackId, provider } }),
     onSuccess: (updated) => queryClient.setQueryData(['project', project.id], updated),
   });
 
@@ -55,17 +55,20 @@ export function DraftPanel({ project }: { project: Project }) {
             </select>
           </label>
           <SectionPlayer key={track.id} track={track} />
+          <div className="mb-3 flex flex-wrap items-center gap-4 text-sm">
+            <AiChoice choice={choice} disabled={running} />
+          </div>
           <div className="flex flex-wrap items-center gap-4 text-sm">
             <button
               type="button"
-              onClick={() => draft.mutate(track.id)}
-              disabled={running || blocker !== null}
+              onClick={() => choice.provider && draft.mutate({ trackId: track.id, provider: choice.provider })}
+              disabled={running || blocker !== null || !choice.provider}
               className="rounded bg-slate-900 px-4 py-2 text-white hover:bg-slate-700 disabled:opacity-50"
             >
               {draftState === 'failed' ? '重試' : '產生初版'}
             </button>
             {blocker && !running && <span className="text-slate-500">{blocker}</span>}
-            {isDraftBusy(draftState) && <span className="text-slate-600">{PROGRESS[draftState]}</span>}
+            <DraftProgress state={draftState} />
             {draftState === 'done' && !draft.isPending && (
               <span className="text-green-700">
                 初版已完成。
