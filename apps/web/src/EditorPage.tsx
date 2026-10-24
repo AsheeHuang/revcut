@@ -1,48 +1,67 @@
 import { Player, type PlayerRef } from '@remotion/player';
-import { type CompositionProps, IgSafeZoneMask, RecapVideo, recapDurationInFrames } from '@revcut/composition';
+import { type CompositionProps, coverRect, IgSafeZoneMask, RecapVideo, recapDurationInFrames } from '@revcut/composition';
 import {
   type AiProvider,
+  barShape,
+  type Clip,
   computeTiming,
   FPS,
   framesToSec,
   HEIGHT,
   isDraftBusy,
   isRenderBusy,
+  Media,
+  type MusicTrackDetail,
   Project,
   Render,
   StartRenderResponse,
   type Timeline,
-  type Timing,
   TimelineDetail,
   TimelineSummary,
   type ValidationIssue,
+  validateTimeline,
   WIDTH,
 } from '@revcut/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { type RefObject, useEffect, useMemo, useRef, useState } from 'react';
+import { type PointerEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { api, messageOf } from './api';
+import { ClipInspector } from './ClipInspector';
+import { ClipStrip } from './ClipStrip';
 import { AiChoice, DraftProgress, useAiChoice } from './DraftControls';
+import { MediaPicker } from './MediaPicker';
+import { MusicBar } from './MusicBar';
+import { newGesture, type SaveState, type TimelineEditor, useTimelineEditor } from './useTimelineEditor';
 
 const POLL_MS = 2000;
 const PLAYER_HEIGHT = 720;
+// Leaves the Player's own control bar clickable under the crop drag surface.
+const PLAYER_CONTROLS_PX = 48;
 
 const formatTime = (iso: string) =>
   new Date(iso).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
 
 // SPEC §9.1: the preview plays the 720p preview files from the clip's own in-point.
-function previewProps({ data, assets }: TimelineDetail): CompositionProps | null {
-  if (!assets.music) return null;
+function previewProps(timeline: Timeline, media: Record<string, Media>, song: MusicTrackDetail): CompositionProps | null {
+  if (!song.analysis) return null;
   const sources = Object.fromEntries(
-    data.clips.flatMap((clip) => {
-      const media = assets.media[clip.mediaId];
-      if (!media) return [];
-      const { kind, previewUrl, width, height } = media;
+    timeline.clips.flatMap((clip) => {
+      const item = media[clip.mediaId];
+      if (!item?.previewUrl || item.width === null || item.height === null) return [];
+      const { kind, previewUrl, width, height } = item;
       return [[clip.id, { kind, src: previewUrl, startFromSec: clip.sourceInSec, width, height }]];
     }),
   );
-  return { timeline: data, music: { src: assets.music.url, beats: assets.music.beats }, sources };
+  return { timeline, music: { src: song.audioUrl, beats: song.analysis.beats }, sources };
 }
+
+const isTextField = (target: EventTarget | null) =>
+  target instanceof HTMLTextAreaElement ||
+  (target instanceof HTMLElement && target.isContentEditable) ||
+  (target instanceof HTMLInputElement && !['range', 'checkbox', 'button'].includes(target.type));
+const isControl = (target: EventTarget | null) => target instanceof HTMLInputElement || target instanceof HTMLSelectElement;
+
+type Picker = { mode: 'replace'; clipId: string } | { mode: 'insert'; index: number } | null;
 
 export function EditorPage() {
   const { id = '' } = useParams();
@@ -56,38 +75,124 @@ export function EditorPage() {
     queryKey: ['project', id, 'timelines'],
     queryFn: () => api(TimelineSummary.array(), `/api/projects/${id}/timelines`),
   });
+  const mediaList = useQuery({
+    queryKey: ['project', id, 'media'],
+    queryFn: () => api(Media.array(), `/api/projects/${id}/media`),
+  });
   const timelineId = project.data?.currentTimelineId;
   // AI 重排 makes a new version and switches to it.
   useEffect(() => {
     if (timelineId) void queryClient.invalidateQueries({ queryKey: ['project', id, 'timelines'] });
   }, [timelineId, queryClient, id]);
-  const timeline = useQuery({
+  const detail = useQuery({
     queryKey: ['timeline', timelineId],
     queryFn: () => api(TimelineDetail, `/api/timelines/${timelineId}`),
     enabled: Boolean(timelineId),
   });
+  const editor = useTimelineEditor(detail.data, mediaList.data);
+  const { timeline, song, media, dispatch } = editor;
+
   const switchVersion = useMutation({
-    mutationFn: (currentTimelineId: string) => api(Project, `/api/projects/${id}`, { method: 'PATCH', body: { currentTimelineId } }),
+    mutationFn: async (currentTimelineId: string) => {
+      await editor.save();
+      return api(Project, `/api/projects/${id}`, { method: 'PATCH', body: { currentTimelineId } });
+    },
     onSuccess: (updated) => queryClient.setQueryData(['project', id], updated),
   });
-
   const versionNames = useMemo(
     () => new Map(versions.data?.map((version, i) => [version.id, `版本 ${versions.data.length - i}`])),
     [versions.data],
   );
+
+  const analysis = song?.analysis;
+  const timing = useMemo(
+    () => (timeline && analysis ? computeTiming(analysis.beats, timeline.music.startBeat, timeline.clips) : null),
+    [timeline, analysis],
+  );
+  const validation = useMemo(() => {
+    if (!timeline || !mediaList.data || (!song && !editor.songError)) return null;
+    const track = song ? { status: song.status, beats: analysis?.beats ?? null, downbeatIndices: analysis?.downbeatIndices ?? null } : null;
+    return validateTimeline(timeline, { track, media });
+  }, [timeline, mediaList.data, song, editor.songError, analysis, media]);
+  const props = useMemo(() => (timeline && song ? previewProps(timeline, media, song) : null), [timeline, media, song]);
+  const beatsPerBar = analysis ? barShape(analysis.beats, analysis.downbeatIndices)?.beatsPerBar : undefined;
+  const downbeats = useMemo(() => new Set(analysis?.downbeatIndices), [analysis]);
+  const flagged = useMemo(
+    () =>
+      new Map([
+        ...(validation?.warnings ?? []).flatMap((issue) => (issue.clipId ? [[issue.clipId, 'warning'] as const] : [])),
+        ...(validation?.errors ?? []).flatMap((issue) => (issue.clipId ? [[issue.clipId, 'error'] as const] : [])),
+      ]),
+    [validation],
+  );
+
   const playerRef = useRef<PlayerRef>(null);
   const [showMask, setShowMask] = useState(true);
-  const detail = timeline.data;
-  const props = useMemo(() => (detail ? previewProps(detail) : null), [detail]);
-  const timing = useMemo(
-    () => (detail?.assets.music ? computeTiming(detail.assets.music.beats, detail.data.music.startBeat, detail.data.clips) : null),
-    [detail],
-  );
-  const current = useCurrentClip(playerRef, timing);
-  const seekToClip = (clipId: string) => {
-    const k = detail?.data.clips.findIndex((clip) => clip.id === clipId) ?? -1;
-    if (timing && k >= 0) playerRef.current?.seekTo(timing.clips[k]!.startFrame);
+  const [picker, setPicker] = useState<Picker>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const clips = timeline?.clips ?? [];
+  const selectedIndex = Math.max(0, clips.findIndex((clip) => clip.id === selectedId));
+  const selected: Clip | undefined = clips[selectedIndex];
+
+  // The selection follows the playhead, and an edit or a new selection brings the playhead back onto the selected clip.
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player || !timing) return;
+    const onFrame = ({ detail: { frame } }: { detail: { frame: number } }) => {
+      const clip = clips[timing.clips.findLastIndex((c) => c.startFrame <= frame)];
+      if (clip) setSelectedId(clip.id);
+    };
+    player.addEventListener('frameupdate', onFrame);
+    return () => player.removeEventListener('frameupdate', onFrame);
+  }, [timing, clips]);
+  useEffect(() => {
+    const player = playerRef.current;
+    const span = timing?.clips[selectedIndex];
+    if (!player || !span || player.isPlaying()) return;
+    const frame = player.getCurrentFrame();
+    if (frame < span.startFrame || frame >= span.startFrame + span.frames) player.seekTo(span.startFrame);
+  }, [timing, selectedIndex]);
+
+  const selectAt = (k: number) => {
+    const clip = clips[Math.max(0, Math.min(k, clips.length - 1))];
+    if (clip) setSelectedId(clip.id);
   };
+  const deleteSelected = () => {
+    if (!selected || clips.length < 2) return;
+    setSelectedId((clips[selectedIndex + 1] ?? clips[selectedIndex - 1])!.id);
+    dispatch({ type: 'delete', clipId: selected.id });
+  };
+
+  const onKey = useRef<(event: KeyboardEvent) => void>(() => {});
+  onKey.current = (event) => {
+    if (picker || isTextField(event.target)) return;
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
+      event.preventDefault();
+      if (event.shiftKey) editor.redo();
+      else editor.undo();
+      return;
+    }
+    if (event.metaKey || event.ctrlKey || event.altKey || isControl(event.target)) return;
+    if (event.key === ' ') {
+      event.preventDefault();
+      playerRef.current?.toggle();
+    } else if (event.key === 'Delete' || event.key === 'Backspace') {
+      event.preventDefault();
+      deleteSelected();
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      selectAt(selectedIndex + (event.key === 'ArrowLeft' ? -1 : 1));
+    }
+  };
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => onKey.current(event);
+    window.addEventListener('keydown', listener);
+    return () => window.removeEventListener('keydown', listener);
+  }, []);
+
+  const used = useMemo(() => new Set(clips.map((clip) => clip.mediaId)), [clips]);
+  const errors = validation?.errors ?? [];
+  const warnings = validation?.warnings ?? [];
 
   return (
     <main className="mx-auto max-w-6xl p-8">
@@ -97,14 +202,9 @@ export function EditorPage() {
       {project.isError && <p className="mt-4 text-red-700">無法載入專案：{messageOf(project.error)}</p>}
       {project.data && (
         <header className="mt-2 mb-6 flex flex-wrap items-end justify-between gap-4">
-          <div>
+          <div className="flex items-baseline gap-4">
             <h1 className="text-2xl font-semibold">{project.data.title}</h1>
-            {detail && (
-              <p className="text-sm text-slate-600 tabular-nums" data-testid="timeline-summary">
-                總長 {detail.durationSec === null ? '–' : detail.durationSec.toFixed(1)} 秒｜{detail.data.clips.length} 段｜錯誤{' '}
-                {detail.validation.errors.length} 項｜警告 {detail.validation.warnings.length} 項
-              </p>
-            )}
+            {timeline && <SaveStatus state={editor.saveState} onRetry={() => void editor.save().catch(() => {})} />}
           </div>
           {versions.data && timelineId && (
             <label className="flex items-center gap-2 text-sm">
@@ -114,6 +214,7 @@ export function EditorPage() {
                 onChange={(event) => switchVersion.mutate(event.target.value)}
                 disabled={switchVersion.isPending}
                 className="rounded border border-slate-300 bg-white px-2 py-1"
+                data-testid="version-picker"
               >
                 {versions.data.map((version) => (
                   <option key={version.id} value={version.id}>
@@ -121,6 +222,7 @@ export function EditorPage() {
                   </option>
                 ))}
               </select>
+              {switchVersion.isError && <span className="text-red-700">{messageOf(switchVersion.error)}</span>}
             </label>
           )}
         </header>
@@ -133,13 +235,14 @@ export function EditorPage() {
           </Link>
         </p>
       )}
-      {timeline.isError && <p className="text-red-700">無法載入時間軸：{messageOf(timeline.error)}</p>}
-      {detail && (
+      {detail.isError && <p className="text-red-700">無法載入時間軸：{messageOf(detail.error)}</p>}
+      {editor.songError && <p className="text-red-700">歌曲已刪除或無法載入，不能預覽和編輯：{messageOf(editor.songError)}</p>}
+      {timeline && (
         <>
           <div className="grid grid-cols-[auto_1fr] gap-8">
             <div>
               {props ? (
-                <div className="relative bg-black" style={{ width: (PLAYER_HEIGHT * WIDTH) / HEIGHT, height: PLAYER_HEIGHT }}>
+                <div className="relative bg-black" style={{ width: (PLAYER_HEIGHT * WIDTH) / HEIGHT, height: PLAYER_HEIGHT }} data-testid="preview">
                   <Player
                     ref={playerRef}
                     component={RecapVideo}
@@ -149,48 +252,217 @@ export function EditorPage() {
                     compositionHeight={HEIGHT}
                     fps={FPS}
                     controls
+                    spaceKeyToPlayOrPause={false}
                     acknowledgeRemotionLicense
                     style={{ width: '100%', height: '100%' }}
                   />
+                  {selected && media[selected.mediaId] && (
+                    <CropSurface clip={selected} media={media[selected.mediaId]!} editor={editor} />
+                  )}
                   {showMask && <IgSafeZoneMask />}
                 </div>
               ) : (
-                <p className="text-red-700">歌曲已刪除或還沒分析完成，無法預覽。</p>
+                <p className="text-slate-500">載入預覽中…</p>
               )}
-              <label className="mt-3 flex items-center gap-2 text-sm text-slate-700">
-                <input type="checkbox" checked={showMask} onChange={(event) => setShowMask(event.target.checked)} />
-                顯示 IG 介面遮罩
-              </label>
+              <div className="mt-3 flex gap-4 text-sm text-slate-700">
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={showMask} onChange={(event) => setShowMask(event.target.checked)} />
+                  IG 介面遮罩
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={timeline.overlayEnabled}
+                    onChange={(event) => dispatch({ type: 'setOverlay', enabled: event.target.checked })}
+                  />
+                  日期疊字
+                </label>
+              </div>
             </div>
             <div className="space-y-6">
-              <ValidationPanel errors={detail.validation.errors} warnings={detail.validation.warnings} onSelect={seekToClip} />
-              {project.data && <RedraftPanel project={project.data} timeline={detail.data} />}
-              <ExportPanel
-                projectId={id}
-                timelineId={detail.id}
-                versionNames={versionNames}
-                blocked={detail.validation.errors.length > 0}
-              />
+              {selected && (
+                <ClipInspector
+                  editor={editor}
+                  clip={selected}
+                  index={selectedIndex}
+                  clipSec={timing ? framesToSec(timing.clips[selectedIndex]!.frames) : null}
+                  media={media[selected.mediaId]}
+                  onReplace={() => setPicker({ mode: 'replace', clipId: selected.id })}
+                />
+              )}
+              {validation && <ValidationPanel errors={errors} warnings={warnings} onSelect={setSelectedId} />}
             </div>
           </div>
-          <ClipStrip detail={detail} timing={timing} current={current} onSelect={seekToClip} />
+
+          <section className="mt-8">
+            <div className="mb-2 flex items-center gap-3 text-sm">
+              <h2 className="mr-auto font-semibold">時間軸</h2>
+              {editor.error && <span className="text-red-700">{editor.error}</span>}
+              <button
+                type="button"
+                onClick={editor.undo}
+                disabled={!editor.canUndo}
+                className="rounded border border-slate-300 bg-white px-2 py-1 disabled:opacity-40"
+              >
+                復原
+              </button>
+              <button
+                type="button"
+                onClick={editor.redo}
+                disabled={!editor.canRedo}
+                className="rounded border border-slate-300 bg-white px-2 py-1 disabled:opacity-40"
+              >
+                重做
+              </button>
+              <button
+                type="button"
+                onClick={() => setPicker({ mode: 'insert', index: selectedIndex + 1 })}
+                className="rounded border border-slate-300 bg-white px-2 py-1"
+              >
+                插入素材
+              </button>
+            </div>
+            <ClipStrip
+              timeline={timeline}
+              timing={timing}
+              downbeats={downbeats}
+              selectedId={selected?.id ?? null}
+              flagged={flagged}
+              onSelect={setSelectedId}
+              onReorder={(clipId, toIndex) => {
+                setSelectedId(clipId);
+                dispatch({ type: 'reorder', clipId, toIndex });
+              }}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              拖曳卡片排序。快捷鍵：Space 播放／暫停、⌘Z／⌘⇧Z（Windows 用 Ctrl）復原／重做、Delete 刪除、←／→ 選上一段／下一段。
+            </p>
+          </section>
+
+          <div className="mt-6">
+            <MusicBar
+              editor={editor}
+              totalSec={timing ? framesToSec(timing.totalFrames) : null}
+              bars={beatsPerBar ? clips.reduce((sum, clip) => sum + clip.beats, 0) / beatsPerBar : null}
+              errors={errors.length}
+              warnings={warnings.length}
+            />
+          </div>
+
+          <div className="mt-6 grid grid-cols-2 gap-6">
+            {project.data && <RedraftPanel project={project.data} timeline={timeline} editor={editor} />}
+            {detail.data && (
+              <ExportPanel
+                projectId={id}
+                timelineId={detail.data.id}
+                versionNames={versionNames}
+                blocked={!validation || errors.length > 0}
+                editor={editor}
+              />
+            )}
+          </div>
+
+          {picker && mediaList.data && (
+            <MediaPicker
+              title={picker.mode === 'replace' ? '換素材' : '插入素材'}
+              media={mediaList.data}
+              used={used}
+              header={
+                picker.mode === 'insert' && (
+                  <label className="flex items-center gap-2">
+                    <span className="text-slate-600">插入位置</span>
+                    <select
+                      value={picker.index}
+                      onChange={(event) => setPicker({ mode: 'insert', index: Number(event.target.value) })}
+                      className="rounded border border-slate-300 bg-white px-2 py-1"
+                      data-testid="insert-position"
+                    >
+                      {Array.from({ length: clips.length + 1 }, (_, k) => (
+                        <option key={k} value={k}>
+                          {k === 0 ? '最前面' : `第 ${k} 段之後`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )
+              }
+              onPick={(mediaId) => {
+                if (picker.mode === 'replace') dispatch({ type: 'replaceMedia', clipId: picker.clipId, mediaId });
+                else {
+                  const clipId = crypto.randomUUID();
+                  dispatch({ type: 'insert', index: picker.index, mediaId, clipId });
+                  setSelectedId(clipId);
+                }
+                setPicker(null);
+              }}
+              onClose={() => setPicker(null)}
+            />
+          )}
         </>
       )}
     </main>
   );
 }
 
-function useCurrentClip(playerRef: RefObject<PlayerRef | null>, timing: Timing | null): number {
-  const [current, setCurrent] = useState(0);
-  useEffect(() => {
-    const player = playerRef.current;
-    if (!player || !timing) return;
-    const onFrame = ({ detail }: { detail: { frame: number } }) =>
-      setCurrent(timing.clips.findLastIndex((clip) => clip.startFrame <= detail.frame));
-    player.addEventListener('frameupdate', onFrame);
-    return () => player.removeEventListener('frameupdate', onFrame);
-  }, [playerRef, timing]);
-  return current;
+const SAVE_LABELS = { saved: '已儲存', saving: '儲存中…', failed: '儲存失敗' } as const satisfies Record<SaveState, string>;
+
+function SaveStatus({ state, onRetry }: { state: SaveState; onRetry: () => void }) {
+  return (
+    <span className={`text-sm ${state === 'failed' ? 'text-red-700' : 'text-slate-500'}`} data-testid="save-state">
+      {SAVE_LABELS[state]}
+      {state === 'failed' && (
+        <button type="button" onClick={onRetry} className="ml-2 underline">
+          重試
+        </button>
+      )}
+    </span>
+  );
+}
+
+type Axis = { from: number; focus: number; perPx: number; half: number };
+
+// A focus only moves the frame while the scaled source overhangs that side; past the overhang
+// it stays put, so dragging back responds at once instead of after a dead zone.
+function dragAxis({ from, focus, perPx, half }: Axis, to: number): number {
+  if (half >= 0.5) return focus;
+  return Math.max(half, Math.min(focus - (to - from) * perPx, 1 - half));
+}
+
+// SPEC §11.3: drag on the preview to move the selected clip's crop focus; one drag is one undo step.
+function CropSurface({ clip, media, editor }: { clip: Clip; media: Media; editor: TimelineEditor }) {
+  const drag = useRef<{ gesture: string; x: Axis; y: Axis } | null>(null);
+  if (media.width === null || media.height === null) return null;
+  const { width, height } = media;
+
+  const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const scale = WIDTH / event.currentTarget.getBoundingClientRect().width;
+    const rect = coverRect(width, height, clip.crop);
+    drag.current = {
+      gesture: newGesture('crop'),
+      x: { from: event.clientX, focus: clip.crop.focusX, perPx: scale / rect.width, half: WIDTH / 2 / rect.width },
+      y: { from: event.clientY, focus: clip.crop.focusY, perPx: scale / rect.height, half: HEIGHT / 2 / rect.height },
+    };
+  };
+  const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    if (!d) return;
+    const crop = { focusX: dragAxis(d.x, event.clientX), focusY: dragAxis(d.y, event.clientY) };
+    editor.dispatch({ type: 'setCrop', clipId: clip.id, crop }, d.gesture);
+  };
+  const end = () => (drag.current = null);
+
+  return (
+    <div
+      className="absolute inset-x-0 top-0 cursor-move touch-none"
+      style={{ bottom: PLAYER_CONTROLS_PX }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={end}
+      onPointerCancel={end}
+      data-testid="crop-surface"
+    />
+  );
 }
 
 function ValidationPanel({
@@ -204,7 +476,7 @@ function ValidationPanel({
 }) {
   const issues = [...errors.map((issue) => ({ issue, error: true })), ...warnings.map((issue) => ({ issue, error: false }))];
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-4">
+    <section className="rounded-lg border border-slate-200 bg-white p-4" data-testid="validation-panel">
       <h2 className="mb-2 font-semibold">檢查結果</h2>
       {issues.length === 0 && <p className="text-sm text-green-700">沒有問題。</p>}
       <ul className="space-y-1 text-sm">
@@ -227,15 +499,17 @@ function ValidationPanel({
 }
 
 // SPEC §11.3: a new seed on the same song and start, as a new version; the current one keeps its edits.
-function RedraftPanel({ project, timeline }: { project: Project; timeline: Timeline }) {
+function RedraftPanel({ project, timeline, editor }: { project: Project; timeline: Timeline; editor: TimelineEditor }) {
   const queryClient = useQueryClient();
   const choice = useAiChoice(project);
   const redraft = useMutation({
-    mutationFn: (provider: AiProvider) =>
-      api(Project, `/api/projects/${project.id}/draft`, {
+    mutationFn: async (provider: AiProvider) => {
+      await editor.save();
+      return api(Project, `/api/projects/${project.id}/draft`, {
         method: 'POST',
         body: { trackId: timeline.music.trackId, startBeat: timeline.music.startBeat, provider },
-      }),
+      });
+    },
     onSuccess: (updated) => queryClient.setQueryData(['project', project.id], updated),
   });
   const running = isDraftBusy(project.draftState) || redraft.isPending;
@@ -271,11 +545,13 @@ function ExportPanel({
   timelineId,
   versionNames,
   blocked,
+  editor,
 }: {
   projectId: string;
   timelineId: string;
   versionNames: Map<string, string>;
   blocked: boolean;
+  editor: TimelineEditor;
 }) {
   const queryClient = useQueryClient();
   const renders = useQuery({
@@ -283,8 +559,12 @@ function ExportPanel({
     queryFn: () => api(Render.array(), `/api/projects/${projectId}/renders`),
     refetchInterval: (query) => (query.state.data?.some((render) => isRenderBusy(render.state)) ? POLL_MS : false),
   });
+  // SPEC §6.5: the pending edit is saved first, so an export clicked right after an edit includes it.
   const start = useMutation({
-    mutationFn: () => api(StartRenderResponse, `/api/timelines/${timelineId}/renders`, { method: 'POST' }),
+    mutationFn: async () => {
+      await editor.save();
+      return api(StartRenderResponse, `/api/timelines/${timelineId}/renders`, { method: 'POST' });
+    },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['project', projectId, 'renders'] }),
   });
   const latest = renders.data?.find((render) => render.timelineId === timelineId);
@@ -345,42 +625,6 @@ function ExportPanel({
           </ul>
         </>
       )}
-    </section>
-  );
-}
-
-function ClipStrip({
-  detail,
-  timing,
-  current,
-  onSelect,
-}: {
-  detail: TimelineDetail;
-  timing: Timing | null;
-  current: number;
-  onSelect: (clipId: string) => void;
-}) {
-  return (
-    <section className="mt-8">
-      <h2 className="mb-2 font-semibold">片段</h2>
-      <ol className="flex gap-1" data-testid="clip-strip">
-        {detail.data.clips.map((clip, k) => (
-          <li key={clip.id} style={{ flex: `${clip.beats} 1 0` }} className="min-w-0">
-            <button
-              type="button"
-              onClick={() => onSelect(clip.id)}
-              className={`block w-full overflow-hidden rounded border-2 bg-white text-left ${
-                k === current ? 'border-slate-900' : 'border-transparent'
-              }`}
-            >
-              <img src={`/api/media/${clip.mediaId}/thumb`} alt="" className="h-20 w-full object-cover" />
-              <span className="block truncate px-1 py-0.5 text-xs text-slate-600 tabular-nums">
-                {clip.beats} 拍{timing ? `・${framesToSec(timing.clips[k]!.frames).toFixed(2)} 秒` : ''}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ol>
     </section>
   );
 }
