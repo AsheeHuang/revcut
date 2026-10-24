@@ -64,7 +64,7 @@ sudo apt install -y ffmpeg libimage-exiftool-perl libheif-examples
 
 # Libraries for Remotion's headless Chrome (on Ubuntu 24.04, use libasound2t64 instead of libasound2)
 sudo apt install -y libnss3 libdbus-1-3 libatk1.0-0 libasound2 libxrandr2 libxkbcommon-dev \
-	libxfixes3 libxcomposite1 libxdamage1 libgbm-dev libcups2 libcairo2 libpango-1.0-0 libatk-bridge2.0-0
+	libxfixes3 libxcomposite1 libxdamage1 libgbm1 libcups2 libcairo2 libpango-1.0-0 libatk-bridge2.0-0
 
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
