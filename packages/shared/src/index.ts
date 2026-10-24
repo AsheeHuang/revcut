@@ -14,3 +14,4 @@ export * from './planner';
 export * from './draft';
 export * from './render';
 export * from './timelineApi';
+export * from './history';
