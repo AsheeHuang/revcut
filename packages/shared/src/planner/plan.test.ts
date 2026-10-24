@@ -1,23 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { computeTiming, framesToSec } from '../timing';
 import { plan } from './plan';
-import type { MediaAnalysis, PlannerMedia, PlannerTrack } from './types';
+import { beatTrack, uuid } from './testTracks';
+import type { MediaAnalysis, PlannerMedia } from './types';
 
-let next = 0;
-const uuid = () => `00000000-0000-4000-8000-${String(++next).padStart(12, '0')}`;
 const TRACK_ID = uuid();
-
-// beat_this reports beats on a 20 ms grid.
-function track(bpm: number, seconds = 200): PlannerTrack {
-  const beats: number[] = [];
-  for (let i = 0; 0.3 + (i * 60) / bpm < seconds; i++) beats.push(Math.round((0.3 + (i * 60) / bpm) * 50) / 50);
-  return {
-    id: TRACK_ID,
-    beats,
-    downbeatIndices: beats.map((_, i) => i).filter((i) => i % 4 === 0),
-    energy: { hopSec: 0.5, values: Array(seconds * 2).fill(0.5) },
-  };
-}
+const track = (bpm: number) => beatTrack(bpm, 200, TRACK_ID);
 
 function lcg(seed: number) {
   let state = seed;

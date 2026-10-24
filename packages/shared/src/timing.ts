@@ -34,6 +34,9 @@ export function computeTiming(
 
 export const framesToSec = (frames: number) => frames / FPS;
 
+// Whole frames line an in-point up with the 30 fps grid of both the preview file and the export slice.
+export const floorToFrame = (sec: number) => Math.floor(sec * FPS + 1e-6) / FPS;
+
 export type SliceWindow = { startSec: number; endSec: number; startFromSec: number };
 
 // SPEC §3.3: the export cuts half a second of margin around each clip, less at either end of the video.

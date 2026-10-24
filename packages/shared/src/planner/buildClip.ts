@@ -1,11 +1,9 @@
-import { FPS, ORIGINAL_DEFAULT_VOLUME, PHOTO_END_ZOOM } from '../constants';
+import { ORIGINAL_DEFAULT_VOLUME, PHOTO_END_ZOOM } from '../constants';
 import type { Clip } from '../timeline';
+import { floorToFrame } from '../timing';
 import type { Moment, PlannerMedia } from './types';
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(value, max));
-
-// Whole frames line the in-point up with the 30 fps grid of both the preview file and the export slice.
-const floorToFrame = (sec: number) => Math.floor(sec * FPS + 1e-6) / FPS;
 
 // capturedAt carries the capture place's own offset, so its date part is the local date.
 const localDate = (capturedAt: string | null) => (capturedAt === null ? null : capturedAt.slice(0, 10).replaceAll('-', '.'));
