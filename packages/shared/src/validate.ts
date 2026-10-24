@@ -37,7 +37,7 @@ export type ValidationContext = {
 };
 
 // durationSec is stored as a 4-byte real, so an in-point clamped to the very end can read back a hair over.
-const DURATION_TOLERANCE_SEC = 1e-4;
+export const DURATION_TOLERANCE_SEC = 1e-4;
 
 const sec = (value: number) => Number(value.toFixed(2));
 

@@ -15,3 +15,4 @@ export * from './draft';
 export * from './render';
 export * from './timelineApi';
 export * from './history';
+export * from './edit';

@@ -7,7 +7,7 @@ import type { PlannerMedia } from './types';
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(value, max));
 
 // capturedAt carries the capture place's own offset, so its date part is the local date.
-const localDate = (capturedAt: string | null) => (capturedAt === null ? null : capturedAt.slice(0, 10).replaceAll('-', '.'));
+export const localDate = (capturedAt: string | null) => (capturedAt === null ? null : capturedAt.slice(0, 10).replaceAll('-', '.'));
 
 // SPEC §8.2 step 7: the one place clip defaults come from, shared by the planner and the editor.
 export function buildClip({
