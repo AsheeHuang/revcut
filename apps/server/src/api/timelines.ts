@@ -19,7 +19,7 @@ import { claimDraft } from '../db/draftState';
 import { media, musicTracks, projects, timelines } from '../db/schema';
 import { configuredProvider } from './ai';
 import type { ApiDeps } from './deps';
-import { visibleMedia } from './dto';
+import { draftMedia } from './dto';
 import { IdParams, loadProject } from './projects';
 import { loadTimelineContext } from './timelineContext';
 
@@ -87,7 +87,7 @@ export const timelineRoutes: FastifyPluginAsyncZod<ApiDeps> = async (app, { db, 
       }
       const rows = await db.select().from(media).where(eq(media.projectId, id));
       if (rows.some((row) => isMediaBusy(row.status))) throw new HttpError(409, 'MEDIA_BUSY', '還有素材在處理');
-      if (!visibleMedia(rows).some((item) => item.status === 'ready' && !item.excluded)) {
+      if (draftMedia(rows).length === 0) {
         throw new HttpError(422, 'NO_MEDIA', '沒有可用的素材');
       }
 

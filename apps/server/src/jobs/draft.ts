@@ -6,7 +6,7 @@ import { AiFailure, type VisionAnalyzer } from '../ai/analyzer';
 import { buildItems, resolveVerdicts } from '../ai/contract';
 import { budgetFrames, extractFrames, type Frame } from '../ai/frames';
 import type { AiProviders } from '../ai/providers';
-import { visibleMedia } from '../api/dto';
+import { draftMedia } from '../api/dto';
 import { findReusableRun, runAnalyses } from '../db/analysis';
 import type { Db } from '../db/client';
 import { transitionDraft } from '../db/draftState';
@@ -42,7 +42,7 @@ export function createDraftQueue({
   const queue = new PQueue({ concurrency: 1 });
   const shutdown = new AbortController();
 
-  // SPEC §6.4 step 1: frames out, one request in, the run and its per-media rows stored with what it cost.
+  // SPEC §6.4 step 1.
   async function analyze(
     projectId: string,
     items: Media[],
@@ -50,8 +50,7 @@ export function createDraftQueue({
     analyzer: VisionAnalyzer,
     signal: AbortSignal,
   ): Promise<string> {
-    const sources = items.map(({ kind, durationSec, width, height }) => ({ kind, durationSec, width: width ?? 0, height: height ?? 0 }));
-    const budget = budgetFrames(sources, analyzer);
+    const budget = budgetFrames(items, analyzer);
     if (!budget) throw new DraftFailure('素材太多：每支影片只送 2 張畫面，仍超過 AI 供應商單次分析的上限');
 
     const [run] = await db
@@ -122,7 +121,7 @@ export function createDraftQueue({
       const analyzer = ai.analyzers[provider];
       if (!analyzer) throw new DraftFailure(`沒有設定 ${provider} 的 API key`);
       const rows = await db.select().from(media).where(eq(media.projectId, projectId));
-      const usable = visibleMedia(rows).filter((item) => item.status === 'ready' && !item.excluded);
+      const usable = draftMedia(rows);
       const mediaIds = usable.map((item) => item.id);
 
       let runId = reanalyze ? null : await findReusableRun(db, { projectId, provider, model: analyzer.model, mediaIds });

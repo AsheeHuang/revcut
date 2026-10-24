@@ -33,7 +33,7 @@ export function frameSize(width: number, height: number): { width: number; heigh
   return { width: Math.round(width * scale), height: Math.round(height * scale) };
 }
 
-type FrameSource = { kind: MediaKind; durationSec: number | null; width: number; height: number };
+type FrameSource = { kind: MediaKind; durationSec: number | null; width: number | null; height: number | null };
 
 // SPEC §7.2: estimate the request before extracting anything, and send fewer frames per video until it fits.
 export function budgetFrames(sources: FrameSource[], { limits, imageTokens }: FrameBudget) {
@@ -42,7 +42,7 @@ export function budgetFrames(sources: FrameSource[], { limits, imageTokens }: Fr
     let inputTokens = SYSTEM_PROMPT.length + TEXT_TOKENS_PER_MEDIA * sources.length;
     let requestBytes = Buffer.byteLength(SYSTEM_PROMPT);
     sources.forEach((source, i) => {
-      const { width, height } = frameSize(source.width, source.height);
+      const { width, height } = frameSize(source.width ?? FRAME_LONG_EDGE, source.height ?? FRAME_LONG_EDGE);
       inputTokens += counts[i]! * (imageTokens(width, height) + TEXT_TOKENS_PER_FRAME);
       requestBytes += counts[i]! * width * height * JPEG_BYTES_PER_PIXEL * BASE64_RATIO;
     });

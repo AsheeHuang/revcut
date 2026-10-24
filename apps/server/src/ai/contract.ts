@@ -104,7 +104,7 @@ function middle(item: AnalysisItem<unknown>, score: number): Moment {
   return { t: item.kind === 'video' ? (item.durationSec ?? 0) / 2 : 0, score, focusX: 0.5, focusY: 0.5 };
 }
 
-// SPEC §7.4: refs back to ids, numbers into range, a default for media the model left out.
+// SPEC §7.4.
 export function resolveVerdicts(result: AnalysisResult, items: AnalysisItem<unknown>[]): Map<string, MediaAnalysis> {
   const idOf = new Map(items.map((item) => [item.ref, item.mediaId]));
   const verdicts = new Map<string, AnalysisResult['media'][number]>();

@@ -55,6 +55,9 @@ export function visibleMedia(rows: MediaRow[], analyses = new Map<string, MediaA
     .sort(byCaptureTime);
 }
 
+// SPEC §6.4: what a draft analyzes and plans: shown, processed, and not excluded.
+export const draftMedia = (rows: MediaRow[]): Media[] => visibleMedia(rows).filter((item) => item.status === 'ready' && !item.excluded);
+
 // One media as the list would show it; a HEIC hidden behind its LIVE video still answers by id.
 export function mediaDto(row: MediaRow, group: MediaRow[], analyses = new Map<string, MediaAnalysis>()): Media {
   const shown = visibleMedia(group, analyses).find((item) => item.id === row.id);

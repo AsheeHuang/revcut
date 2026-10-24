@@ -25,7 +25,7 @@ export interface VisionAnalyzer extends FrameBudget {
   analyze(items: AnalysisItem<Frame>[], signal: AbortSignal): Promise<AnalysisOutput>;
 }
 
-// One provider request. With a fallback, each model that ran is one attempt, billed at its own rates.
+// With a fallback, each model that ran is one attempt, billed at its own rates.
 export type ProviderReply = {
   servedModel: string;
   attempts: { model: string; usage: Usage }[];
@@ -67,7 +67,7 @@ function parseResult(text: string): AnalysisResult | null {
 
 const base64Length = (bytes: number) => Math.ceil(bytes / 3) * 4;
 
-// SPEC §7.1, §7.4: both providers share the prompt, the request limits, and one retry when the answer does not fit the schema.
+// SPEC §7.1, §7.4.
 export function visionAnalyzer({ send, ...spec }: ProviderSpec): VisionAnalyzer {
   return {
     ...spec,

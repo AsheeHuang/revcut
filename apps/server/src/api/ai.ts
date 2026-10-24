@@ -8,10 +8,9 @@ import { HttpError } from '../app';
 import { findReusableRun } from '../db/analysis';
 import { media, projects } from '../db/schema';
 import type { ApiDeps } from './deps';
-import { visibleMedia } from './dto';
+import { draftMedia } from './dto';
 import { IdParams } from './projects';
 
-// SPEC §7.1: a draft runs on a provider with an API key; without one it cannot start.
 export function configuredProvider(ai: AiProviders, requested: AiProvider | undefined): AiProvider {
   const provider = requested ?? aiConfig(ai).defaultProvider;
   if (!ai.analyzers[provider]) throw new HttpError(422, 'PROVIDER_NOT_CONFIGURED', `沒有設定 ${provider} 的 API key`);
@@ -32,15 +31,12 @@ export const aiRoutes: FastifyPluginAsyncZod<ApiDeps> = async (app, { db, ai }) 
       const provider = configuredProvider(ai, request.query.provider);
       const analyzer = ai.analyzers[provider]!;
 
-      const usable = visibleMedia(await db.select().from(media).where(eq(media.projectId, projectId))).filter(
-        (item) => item.status === 'ready' && !item.excluded,
-      );
+      const usable = draftMedia(await db.select().from(media).where(eq(media.projectId, projectId)));
       const mediaIds = usable.map((item) => item.id);
       if (await findReusableRun(db, { projectId, provider, model: analyzer.model, mediaIds })) {
         return { reuse: true, estimatedUsd: 0, mediaCount: usable.length, imageCount: 0 };
       }
-      const sources = usable.map(({ kind, durationSec, width, height }) => ({ kind, durationSec, width: width ?? 0, height: height ?? 0 }));
-      const budget = budgetFrames(sources, analyzer);
+      const budget = budgetFrames(usable, analyzer);
       if (!budget) throw new HttpError(422, 'TOO_MANY_MEDIA', '素材太多：每支影片只送 2 張畫面，仍超過 AI 供應商單次分析的上限');
       return {
         reuse: false,
