@@ -1,9 +1,10 @@
-import { CLIP_MAX_SEC, CLIP_MIN_SEC, FADE_OUT_SEC, MAX_CLIPS_PER_DAY } from '../constants';
+import { FADE_OUT_SEC, MAX_CLIPS_PER_DAY } from '../constants';
 import { barShape, SECTION_ERROR_MESSAGES, suggestSection } from '../section';
 import type { Timeline } from '../timeline';
 import { computeTiming, framesToSec } from '../timing';
 import { type ValidationContext, type ValidationIssue, validateTimeline } from '../validate';
 import { allocateBeats } from './allocateBeats';
+import { beatRange } from './beatRange';
 import { buildClip } from './buildClip';
 import { type Random, seededRandom, seededUuid } from './random';
 import type { MediaAnalysis, Moment, PlanInput, PlannerMedia, PlannerTrack } from './types';
@@ -22,7 +23,6 @@ export type PlanResult =
 
 const DEFAULT_SCORE = 5;
 const SECOND_MOMENT_GAP_SEC = 3;
-const DURATION_TOLERANCE_SEC = 1e-4;
 
 type Section = { startBeat: number; beatsPerBar: number; totalBeats: number };
 type Candidate = { media: PlannerMedia; moment: Moment; score: number; maxBeats: number; rank: number };
@@ -82,9 +82,8 @@ function varyRhythm(beats: number[], picked: Candidate[], minBeats: number, rand
 
 const captureKey = (media: PlannerMedia) => (media.capturedAt === null ? Number.POSITIVE_INFINITY : Date.parse(media.capturedAt));
 
-// SPEC §8.2. Two refinements: the beat length is the section's mean, because beat_this
-// rounds beats to 20 ms and the median gap can be 10 ms off; and a video shorter than
-// its slot is capped before allocation, so every video fits by construction.
+// SPEC §8.2. A video shorter than its slot is capped before allocation (beatRange),
+// so every video fits by construction instead of being repaired after sorting.
 export function plan(input: PlanInput, seed: number): PlanResult {
   const random = seededRandom(seed);
   const { track } = input;
@@ -92,26 +91,7 @@ export function plan(input: PlanInput, seed: number): PlanResult {
   if (typeof section === 'string') return fail(section);
   const { startBeat, beatsPerBar } = section;
 
-  const beatSec = (track.beats[startBeat + section.totalBeats]! - track.beats[startBeat]!) / section.totalBeats;
-  const minBeats = Math.ceil(CLIP_MIN_SEC / beatSec - 1e-9);
-  const maxBeats = Math.max(minBeats, Math.floor(CLIP_MAX_SEC / beatSec + 1e-9));
-  let baseBeats = minBeats;
-  for (let b = minBeats; b <= maxBeats; b++) if (Math.abs(b * beatSec - 1) < Math.abs(baseBeats * beatSec - 1)) baseBeats = b;
-
-  const longestSec = new Map<number, number>();
-  for (let b = minBeats; b <= maxBeats; b++) {
-    let frames = 0;
-    for (let j = startBeat; j + b <= startBeat + section.totalBeats; j++) {
-      frames = Math.max(frames, computeTiming(track.beats, j, [{ beats: b }])!.totalFrames);
-    }
-    longestSec.set(b, framesToSec(frames));
-  }
-  const capFor = (media: PlannerMedia) => {
-    if (media.kind === 'photo') return maxBeats;
-    let cap = minBeats - 1;
-    for (let b = minBeats; b <= maxBeats; b++) if (longestSec.get(b)! <= (media.durationSec ?? 0) + DURATION_TOLERANCE_SEC) cap = b;
-    return cap;
-  };
+  const { minBeats, maxBeats, baseBeats, capFor } = beatRange(track.beats, startBeat, section.totalBeats);
 
   const ids = new Set(input.media.map((media) => media.id));
   const firsts: Candidate[] = [];
