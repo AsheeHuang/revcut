@@ -1,16 +1,15 @@
+import type { MediaAnalysis } from '../analysis';
 import type { Energy } from '../section';
 import type { MediaKind } from '../status';
 
-export type Moment = { t: number; score: number; focusX: number; focusY: number };
-
-export type MediaAnalysis = { usable: boolean; score: number; moments: Moment[]; duplicateOf: string | null };
+export type PlannerAnalysis = Omit<MediaAnalysis, 'description'>;
 
 export type PlannerMedia = {
   id: string;
   kind: MediaKind;
   capturedAt: string | null;
   durationSec: number | null;
-  analysis?: MediaAnalysis | null;
+  analysis?: PlannerAnalysis | null;
 };
 
 export type PlannerTrack = { id: string; beats: number[]; downbeatIndices: number[]; energy: Energy };

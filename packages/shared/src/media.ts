@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MediaAnalysis } from './analysis';
 import { DraftState, MediaKind, MediaStatus } from './status';
 
 export const MEDIA_EXTENSIONS = {
@@ -53,7 +54,7 @@ export const Media = z.object({
   livePhoto: z.boolean(),
   thumbUrl: z.string().nullable(),
   previewUrl: z.string().nullable(),
-  analysis: z.null(),
+  analysis: MediaAnalysis.nullable(),
 });
 export type Media = z.infer<typeof Media>;
 

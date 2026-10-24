@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { DraftState } from './status';
+import { AiProvider, type DraftState } from './status';
 
 export const DRAFT_STATE_TRANSITIONS = {
   idle: ['queued'],
@@ -29,5 +29,7 @@ export const DraftBody = z.object({
     .min(0)
     .max(2 ** 31 - 1)
     .optional(),
+  provider: AiProvider.optional(),
+  reanalyze: z.boolean().optional(),
 });
 export type DraftBody = z.infer<typeof DraftBody>;

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { computeTiming, framesToSec } from '../timing';
 import { plan } from './plan';
 import { beatTrack, uuid } from './testTracks';
-import type { MediaAnalysis, PlannerMedia } from './types';
+import type { PlannerAnalysis, PlannerMedia } from './types';
 
 const TRACK_ID = uuid();
 const track = (bpm: number) => beatTrack(bpm, 200, TRACK_ID);
@@ -18,15 +18,15 @@ function lcg(seed: number) {
 const at = (day: number, minute = 0) =>
   `2026-01-${String(day).padStart(2, '0')}T${String(10 + Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}:00+08:00`;
 
-function photo(day: number, analysis?: MediaAnalysis, minute = 0): PlannerMedia {
+function photo(day: number, analysis?: PlannerAnalysis, minute = 0): PlannerMedia {
   return { id: uuid(), kind: 'photo', capturedAt: at(day, minute), durationSec: null, analysis };
 }
 
-function video(day: number, durationSec: number, analysis?: MediaAnalysis, minute = 0): PlannerMedia {
+function video(day: number, durationSec: number, analysis?: PlannerAnalysis, minute = 0): PlannerMedia {
   return { id: uuid(), kind: 'video', capturedAt: at(day, minute), durationSec, analysis };
 }
 
-const scored = (score: number, moments = [{ t: 0, score, focusX: 0.5, focusY: 0.5 }]): MediaAnalysis => ({
+const scored = (score: number, moments = [{ t: 0, score, focusX: 0.5, focusY: 0.5 }]): PlannerAnalysis => ({
   usable: true,
   score,
   moments,
@@ -47,7 +47,7 @@ function randomMedia(seed: number, count: number): PlannerMedia[] {
       focusX: random(),
       focusY: random(),
     }));
-    const analysis: MediaAnalysis | undefined =
+    const analysis: PlannerAnalysis | undefined =
       random() < 0.2
         ? undefined
         : {

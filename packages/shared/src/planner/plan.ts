@@ -7,7 +7,8 @@ import { allocateBeats } from './allocateBeats';
 import { beatRange } from './beatRange';
 import { buildClip } from './buildClip';
 import { type Random, seededRandom, seededUuid } from './random';
-import type { MediaAnalysis, Moment, PlanInput, PlannerMedia, PlannerTrack } from './types';
+import type { Moment } from '../analysis';
+import type { PlanInput, PlannerAnalysis, PlannerMedia, PlannerTrack } from './types';
 
 export const PLAN_ERROR_MESSAGES = {
   ...SECTION_ERROR_MESSAGES,
@@ -31,8 +32,8 @@ const fail = (error: PlanError, message: string = PLAN_ERROR_MESSAGES[error]): P
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(value, max));
 const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
 
-// Phase 3 has no AI yet: every media is usable, scores 5, and is framed on its center.
-function defaultAnalysis(media: PlannerMedia): MediaAnalysis {
+// SPEC §8.2: media without an analysis is usable, scores 5, and is framed on its center.
+function defaultAnalysis(media: PlannerMedia): PlannerAnalysis {
   const t = media.kind === 'video' ? (media.durationSec ?? 0) / 2 : 0;
   return { usable: true, score: DEFAULT_SCORE, moments: [{ t, score: DEFAULT_SCORE, focusX: 0.5, focusY: 0.5 }], duplicateOf: null };
 }

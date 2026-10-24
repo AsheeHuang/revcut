@@ -1,7 +1,8 @@
 import { ORIGINAL_DEFAULT_VOLUME, PHOTO_END_ZOOM } from '../constants';
 import type { Clip } from '../timeline';
 import { floorToFrame } from '../timing';
-import type { Moment, PlannerMedia } from './types';
+import type { Moment } from '../analysis';
+import type { PlannerMedia } from './types';
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(value, max));
 

@@ -32,4 +32,10 @@ describe('DraftBody', () => {
     expect(DraftBody.safeParse({ trackId, startBeat: -1 }).success).toBe(false);
     expect(DraftBody.safeParse({}).success).toBe(false);
   });
+
+  it('takes an optional AI provider and reanalyze flag', () => {
+    const trackId = '2265ce80-9035-4afb-9b6d-49ebf99f9f09';
+    expect(DraftBody.parse({ trackId, provider: 'openai', reanalyze: true })).toEqual({ trackId, provider: 'openai', reanalyze: true });
+    expect(DraftBody.safeParse({ trackId, provider: 'gemini' }).success).toBe(false);
+  });
 });
