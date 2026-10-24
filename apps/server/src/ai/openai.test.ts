@@ -62,6 +62,14 @@ describe('openaiAnalyzer', () => {
     expect(output.costUsd).toBeCloseTo((10000 * 10 + 2000 * 1 + 2500 * 50) / 1e6, 10);
   });
 
+  it('replays the recorded GPT-6 Astra analysis of nine media, billing its automatic cache write', async () => {
+    const output = await analyzer([json(fixture('openai-recorded.json'))]).analyzer.analyze(items, never);
+    expect(output.result.media.map((verdict) => verdict.ref)).toEqual(['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9']);
+    expect(output.servedModel).toBe('gpt-6-astra');
+    expect(output.usage).toEqual({ inputTokens: 10674, outputTokens: 1216, cacheReadTokens: 0, cacheWriteTokens: 10671 });
+    expect(output.costUsd).toBeCloseTo((3 * 10 + 10671 * 12.5 + 1216 * 50) / 1e6, 10);
+  });
+
   it('fails with OpenAI’s words when the model refuses', async () => {
     const error = await failure(analyzer([json(fixture('openai-refusal.json'))]).analyzer.analyze(items, never));
     expect(error.message).toBe("OpenAI 拒絕分析這批素材：I'm sorry, I can't help with that.");

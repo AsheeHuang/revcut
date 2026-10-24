@@ -1,0 +1,185 @@
+{
+  "id": "resp_recorded",
+  "object": "response",
+  "created_at": 1792855661,
+  "status": "completed",
+  "access_programs": null,
+  "background": false,
+  "billing": {
+    "payer": "developer"
+  },
+  "completed_at": 1792855674,
+  "error": null,
+  "frequency_penalty": 0.0,
+  "incomplete_details": null,
+  "instructions": "你是剪輯師，幫使用者把一段期間拍的影片和照片，剪成一支「個人回顧」短片（直式 9:16、20–25 秒的 IG Reels，每段只用 0.5–2 秒）。\n\n使用者會給你一批素材。每個素材有一個代號（m1、m2…），依拍攝時間排序。影片附上幾張依時間順序抽出的畫面，每張前面標了它在原片的秒數；照片只有一張。\n\n評分標準（1–10 的整數，10 最好）：\n- 畫面品質：清晰、曝光正常、畫面穩定\n- 內容：人物表情、互動、動作、特別的景色或事件\n- 這一刻能不能代表這段期間\n\n每個素材都要回傳一筆，欄位如下：\n- ref：素材代號，例如 \"m1\"\n- usable：明顯模糊、誤拍、全黑、手指擋到鏡頭時為 false，其他為 true\n- score：依上面的標準評分\n- description：用繁體中文描述畫面內容，30 字以內\n- moments：影片挑 1–3 個最值得用的瞬間，照片挑 1 個。影片夠長時，同一支影片的瞬間要是不同的畫面，彼此相隔至少 3 秒。每個瞬間有：\n  - t：瞬間在原片的秒數，在 0 到影片長度之間；照片填 0。成品會以這個時間點為中心取一小段\n  - score：這個瞬間的分數，1–10 的整數\n  - focusX、focusY：主體在原始畫面中的位置，0–1，左上角是 (0, 0)、右下角是 (1, 1)。直式裁切會以這個點為中心\n- duplicateOf：和另一個素材幾乎一樣（同一場景、同一時刻）時，把比較差的那個標記為重複，填比較好那個的代號；否則填 null\n\n不要辨識、也不要命名畫面中的人物，用「一個人」「兩個朋友」這類說法。",
+  "max_output_tokens": 64000,
+  "max_tool_calls": null,
+  "model": "gpt-6-astra",
+  "moderation": null,
+  "output": [
+    {
+      "id": "rs_recorded",
+      "type": "reasoning",
+      "content": [],
+      "encrypted_content": "redacted",
+      "summary": []
+    },
+    {
+      "id": "msg_recorded",
+      "type": "message",
+      "status": "completed",
+      "content": [
+        {
+          "type": "output_text",
+          "annotations": [],
+          "logprobs": [],
+          "text": "{\"media\":[{\"ref\":\"m1\",\"usable\":true,\"score\":7,\"description\":\"素材 m1 的畫面描述（已去除個資）\",\"moments\":[{\"t\":1.4,\"score\":7,\"focusX\":0.5,\"focusY\":0.65}],\"duplicateOf\":null},{\"ref\":\"m2\",\"usable\":true,\"score\":8,\"description\":\"素材 m2 的畫面描述（已去除個資）\",\"moments\":[{\"t\":2.1,\"score\":8,\"focusX\":0.48,\"focusY\":0.66},{\"t\":6.4,\"score\":9,\"focusX\":0.54,\"focusY\":0.66},{\"t\":19.1,\"score\":7,\"focusX\":0.57,\"focusY\":0.71}],\"duplicateOf\":null},{\"ref\":\"m3\",\"usable\":true,\"score\":8,\"description\":\"素材 m3 的畫面描述（已去除個資）\",\"moments\":[{\"t\":0.7,\"score\":8,\"focusX\":0.65,\"focusY\":0.41},{\"t\":6.5,\"score\":8,\"focusX\":0.51,\"focusY\":0.47}],\"duplicateOf\":null},{\"ref\":\"m4\",\"usable\":true,\"score\":9,\"description\":\"素材 m4 的畫面描述（已去除個資）\",\"moments\":[{\"t\":0,\"score\":9,\"focusX\":0.49,\"focusY\":0.43}],\"duplicateOf\":null},{\"ref\":\"m5\",\"usable\":true,\"score\":8,\"description\":\"素材 m5 的畫面描述（已去除個資）\",\"moments\":[{\"t\":1.4,\"score\":8,\"focusX\":0.53,\"focusY\":0.56}],\"duplicateOf\":null},{\"ref\":\"m6\",\"usable\":true,\"score\":9,\"description\":\"素材 m6 的畫面描述（已去除個資）\",\"moments\":[{\"t\":0,\"score\":9,\"focusX\":0.49,\"focusY\":0.43}],\"duplicateOf\":null},{\"ref\":\"m7\",\"usable\":true,\"score\":7,\"description\":\"素材 m7 的畫面描述（已去除個資）\",\"moments\":[{\"t\":4.3,\"score\":8,\"focusX\":0.58,\"focusY\":0.52}],\"duplicateOf\":null},{\"ref\":\"m8\",\"usable\":true,\"score\":9,\"description\":\"素材 m8 的畫面描述（已去除個資）\",\"moments\":[{\"t\":1.9,\"score\":8,\"focusX\":0.51,\"focusY\":0.6},{\"t\":5.6,\"score\":9,\"focusX\":0.53,\"focusY\":0.7}],\"duplicateOf\":null},{\"ref\":\"m9\",\"usable\":true,\"score\":9,\"description\":\"素材 m9 的畫面描述（已去除個資）\",\"moments\":[{\"t\":3.8,\"score\":9,\"focusX\":0.58,\"focusY\":0.4}],\"duplicateOf\":null}]}"
+        }
+      ],
+      "phase": "final_answer",
+      "role": "assistant"
+    }
+  ],
+  "parallel_tool_calls": true,
+  "presence_penalty": 0.0,
+  "previous_response_id": null,
+  "prompt_cache_key": null,
+  "prompt_cache_retention": "24h",
+  "reasoning": {
+    "context": "all_turns",
+    "effort": "medium",
+    "mode": "standard",
+    "summary": null
+  },
+  "safety_identifier": null,
+  "service_tier": "default",
+  "store": false,
+  "temperature": 1.0,
+  "text": {
+    "format": {
+      "type": "json_schema",
+      "description": null,
+      "name": "analysis",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "media": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "type": "string"
+                },
+                "usable": {
+                  "type": "boolean"
+                },
+                "score": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10
+                },
+                "description": {
+                  "type": "string"
+                },
+                "moments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "t": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "score": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10
+                      },
+                      "focusX": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "focusY": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      }
+                    },
+                    "required": [
+                      "t",
+                      "score",
+                      "focusX",
+                      "focusY"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "duplicateOf": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "ref",
+                "usable",
+                "score",
+                "description",
+                "moments",
+                "duplicateOf"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "media"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    "verbosity": "medium"
+  },
+  "tool_choice": "auto",
+  "tool_usage": {
+    "image_gen": {
+      "input_tokens": 0,
+      "input_tokens_details": {
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "output_tokens": 0,
+      "output_tokens_details": {
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 0
+    },
+    "web_search": {
+      "num_requests": 0
+    }
+  },
+  "tools": [],
+  "top_logprobs": 0,
+  "top_p": 0.98,
+  "truncation": "disabled",
+  "usage": {
+    "input_tokens": 10674,
+    "input_tokens_details": {
+      "cache_write_tokens": 10671,
+      "cached_tokens": 0
+    },
+    "output_tokens": 1216,
+    "output_tokens_details": {
+      "reasoning_tokens": 105
+    },
+    "total_tokens": 11890
+  },
+  "user": null,
+  "metadata": {}
+}
