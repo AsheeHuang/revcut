@@ -5,3 +5,5 @@ dist
 fixtures/private/
 analyzer/.venv
 *.tsbuildinfo
+__pycache__/
+.pytest_cache/
