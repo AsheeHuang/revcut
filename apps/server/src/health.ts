@@ -132,7 +132,7 @@ export function createHealthChecks(config: Config, sql: Sql): HealthChecks {
         }
       },
     },
-    anthropicKey: apiKey(config.anthropicApiKey, 'ANTHROPIC_API_KEY'),
-    openaiKey: apiKey(config.openaiApiKey, 'OPENAI_API_KEY'),
+    anthropicKey: apiKey(config.ai.anthropic.apiKey, 'ANTHROPIC_API_KEY'),
+    openaiKey: apiKey(config.ai.openai.apiKey, 'OPENAI_API_KEY'),
   };
 }

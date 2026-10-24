@@ -33,6 +33,22 @@ describe('parseConfig', () => {
   });
 
   it('treats an empty API key as not configured', () => {
-    expect(parseConfig({ ...env, ANTHROPIC_API_KEY: '' }).anthropicApiKey).toBeUndefined();
+    expect(parseConfig({ ...env, ANTHROPIC_API_KEY: '' }).ai.anthropic.apiKey).toBeUndefined();
+  });
+
+  it('defaults the AI provider to Anthropic on claude-opus-5-5 at medium effort', () => {
+    expect(parseConfig(env).ai).toEqual({
+      defaultProvider: 'anthropic',
+      anthropic: { apiKey: undefined, model: 'claude-opus-5-5', effort: 'medium' },
+      openai: { apiKey: undefined, model: undefined, effort: 'medium' },
+    });
+  });
+
+  it('reads the OpenAI model and effort, and rejects an unknown provider or effort', () => {
+    const ai = parseConfig({ ...env, AI_PROVIDER: 'openai', OPENAI_MODEL: 'gpt-6-astra', OPENAI_REASONING_EFFORT: 'high' }).ai;
+    expect(ai.defaultProvider).toBe('openai');
+    expect(ai.openai).toMatchObject({ model: 'gpt-6-astra', effort: 'high' });
+    expect(() => parseConfig({ ...env, AI_PROVIDER: 'gemini' })).toThrow(/AI_PROVIDER/);
+    expect(() => parseConfig({ ...env, ANTHROPIC_EFFORT: 'extreme' })).toThrow(/ANTHROPIC_EFFORT/);
   });
 });
