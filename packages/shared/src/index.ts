@@ -6,3 +6,4 @@ export * from './livePhoto';
 export * from './constants';
 export * from './section';
 export * from './music';
+export * from './timeline';
