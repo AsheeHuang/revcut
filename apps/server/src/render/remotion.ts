@@ -11,6 +11,11 @@ export type RenderVideo = (job: {
   onProgress: (progress: number) => void;
 }) => Promise<void>;
 
+// On this 16 GB WSL machine Remotion's defaults (6 tabs, a frame cache sized from system
+// memory) ran memory down to ~400 MB and hung a tab; 2 tabs and 512 MB rendered 464 frames in 46 s.
+const CONCURRENCY = 2;
+const FRAME_CACHE_BYTES = 512 * 1024 ** 2;
+
 let serveUrl: Promise<string> | null = null;
 
 // SPEC §18 item 14: bundle on the first export, then keep it for the life of the server.
@@ -36,6 +41,8 @@ export const renderWithRemotion: RenderVideo = async ({ props, output, signal, o
     audioCodec: 'aac',
     audioBitrate: '320k',
     outputLocation: output,
+    concurrency: CONCURRENCY,
+    offthreadVideoCacheSizeInBytes: FRAME_CACHE_BYTES,
     onProgress: ({ progress }) => onProgress(progress),
     cancelSignal: (cancel) => signal.addEventListener('abort', cancel, { once: true }),
   });
