@@ -1,6 +1,12 @@
-import type { ApiError } from '@revcut/shared';
+import { type ApiError, HealthResponse } from '@revcut/shared';
 import Fastify, { type FastifyError } from 'fastify';
-import { hasZodFastifySchemaValidationErrors, serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod';
+import {
+  hasZodFastifySchemaValidationErrors,
+  serializerCompiler,
+  validatorCompiler,
+  type ZodTypeProvider,
+} from 'fastify-type-provider-zod';
+import { type HealthChecks, runHealthChecks } from './health';
 
 const ALLOWED_HOSTNAMES = new Set(['localhost', '127.0.0.1']);
 
@@ -8,8 +14,8 @@ function apiError(code: string, message: string, details?: unknown): ApiError {
   return { error: { code, message, details } };
 }
 
-export function buildApp({ logger = false } = {}) {
-  const app = Fastify({ logger });
+export function buildApp({ checks, logger = false }: { checks: HealthChecks; logger?: boolean }) {
+  const app = Fastify({ logger }).withTypeProvider<ZodTypeProvider>();
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 
@@ -34,6 +40,8 @@ export function buildApp({ logger = false } = {}) {
     request.log.error(error);
     return reply.code(500).send(apiError('INTERNAL', '伺服器錯誤'));
   });
+
+  app.get('/api/health', { schema: { response: { 200: HealthResponse } } }, () => runHealthChecks(checks));
 
   return app;
 }
