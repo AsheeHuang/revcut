@@ -48,13 +48,14 @@ function meanEnergy({ hopSec, values }: Energy, fromSec: number, toSec: number):
   return window.length === 0 ? 0 : window.reduce((sum, v) => sum + v, 0) / window.length;
 }
 
-// SPEC §8.2 step 1. A candidate must also really last 20–25 s: the tracker can follow
-// part of a song at double or triple time, where T beats would be far shorter.
+// SPEC §8.2 step 1. The tracker can follow part of a song at double or triple time, so a
+// bar is timed only across downbeats one full bar apart, and a candidate must really last 20–25 s.
 export function suggestSection(beats: number[], downbeatIndices: number[], energy: Energy): SectionResult {
   if (downbeatIndices.length < 2) return { ok: false, error: 'NO_DOWNBEATS' };
   const pairs = downbeatIndices.slice(1).map((index, i) => [downbeatIndices[i]!, index] as const);
   const beatsPerBar = mode(pairs.map(([a, b]) => b - a));
-  const bars = barCount(median(pairs.map(([a, b]) => beats[b]! - beats[a]!)));
+  const fullBars = pairs.filter(([a, b]) => b - a === beatsPerBar);
+  const bars = barCount(median(fullBars.map(([a, b]) => beats[b]! - beats[a]!)));
   const totalBeats = bars * beatsPerBar;
 
   let best: { startBeat: number; energy: number } | null = null;

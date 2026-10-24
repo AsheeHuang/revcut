@@ -105,6 +105,17 @@ describe('suggestSection', () => {
     expect(s.durationSec).toBeLessThanOrEqual(25);
   });
 
+  it('measures a bar only from downbeats a full bar apart when shorter gaps outnumber it', () => {
+    const fast = grid({ bpm: 230, seconds: 30, beatsPerBar: 6, offset: 0 });
+    const slow = grid({ bpm: 76, seconds: 200, offset: fast.beats.at(-1)! + 60 / 76 });
+    const splitBars = slow.downbeatIndices.slice(0, 14).map((i) => i + 2);
+    const beats = [...fast.beats, ...slow.beats];
+    const downbeatIndices = [...fast.downbeatIndices, ...[...slow.downbeatIndices, ...splitBars].sort((a, b) => a - b).map((i) => i + fast.beats.length)];
+    const s = section(suggestSection(beats, downbeatIndices, flat(200)));
+    expect(s).toMatchObject({ beatsPerBar: 4, bars: 7, totalBeats: 28 });
+    expect(s.startSec).toBeGreaterThan(29);
+  });
+
   it('answers SONG_TOO_SHORT when no downbeat has a full section after it', () => {
     const { beats, downbeatIndices } = grid({ bpm: 120, seconds: 19 });
     expect(suggestSection(beats, downbeatIndices, flat(19))).toEqual({ ok: false, error: 'SONG_TOO_SHORT' });
