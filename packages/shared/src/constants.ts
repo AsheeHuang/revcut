@@ -1,3 +1,13 @@
+export const FPS = 30;
+export const WIDTH = 1080;
+export const HEIGHT = 1920;
+export const CLIP_MIN_SEC = 0.5;
+export const CLIP_MAX_SEC = 2.0;
 export const TARGET_MIN_SEC = 20;
 export const TARGET_MAX_SEC = 25;
 export const TARGET_SEC = 22.5;
+export const ORIGINAL_DEFAULT_VOLUME = 0.35;
+export const CLIP_AUDIO_FADE_SEC = 0.05;
+export const PHOTO_END_ZOOM = 1.08;
+export const FADE_OUT_SEC = 1.5;
+export const MAX_CLIPS_PER_DAY = 3;
