@@ -19,3 +19,9 @@ export function mediaPaths(dataDir: string, media: MediaFile) {
     thumb: path.join(derived, 'thumb.webp'),
   };
 }
+
+export function musicPaths(dataDir: string, track: { id: string; ext: string }) {
+  const dir = path.join(dataDir, 'music');
+  const tmp = path.join(dir, `${track.id}.tmp`);
+  return { file: path.join(dir, `${track.id}.${track.ext}`), tmp, wav: path.join(tmp, 'song.wav') };
+}

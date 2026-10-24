@@ -31,22 +31,25 @@ export async function receiveFile(body: NodeJS.ReadableStream, target: string): 
   return { sha256: hash.digest('hex'), sizeBytes };
 }
 
+async function removeEndingIn(dir: string, suffix: string): Promise<string[]> {
+  const stray = (await readdir(dir).catch(() => [])).filter((name) => name.endsWith(suffix)).map((name) => path.join(dir, name));
+  await Promise.all(stray.map((file) => rm(file, { recursive: true, force: true })));
+  return stray;
+}
+
 // SPEC §6.1: on startup, nothing is writing, so every .part and .tmp left is from a crash.
 export async function removeStrays(dataDir: string): Promise<string[]> {
   const removed: string[] = [];
   const projects = await readdir(path.join(dataDir, 'projects')).catch(() => []);
   for (const project of projects) {
-    for (const [dir, suffix] of [
-      ['originals', '.part'],
-      ['derived', '.tmp'],
-    ] as const) {
-      const full = path.join(dataDir, 'projects', project, dir);
-      for (const name of await readdir(full).catch(() => [])) {
-        if (!name.endsWith(suffix)) continue;
-        await rm(path.join(full, name), { recursive: true, force: true });
-        removed.push(path.join(full, name));
-      }
-    }
+    const dir = path.join(dataDir, 'projects', project);
+    removed.push(...(await removeEndingIn(path.join(dir, 'originals'), '.part')));
+    removed.push(...(await removeEndingIn(path.join(dir, 'derived'), '.tmp')));
   }
   return removed;
+}
+
+export async function removeMusicStrays(dataDir: string): Promise<string[]> {
+  const dir = path.join(dataDir, 'music');
+  return [...(await removeEndingIn(dir, '.part')), ...(await removeEndingIn(dir, '.tmp'))];
 }
