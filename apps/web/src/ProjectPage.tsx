@@ -1,4 +1,13 @@
-import { extensionOf, isDraftBusy, isMediaBusy, kindFromExtension, MEDIA_EXTENSIONS, Media, Project } from '@revcut/shared';
+import {
+  extensionOf,
+  isDraftBusy,
+  isMediaBusy,
+  kindFromExtension,
+  MEDIA_EXTENSIONS,
+  Media,
+  type MediaAnalysis,
+  Project,
+} from '@revcut/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router';
 import { useEffect } from 'react';
@@ -42,6 +51,11 @@ export function ProjectPage() {
   useEffect(() => {
     if (media.dataUpdatedAt) void queryClient.invalidateQueries({ queryKey: ['project', id], exact: true });
   }, [media.dataUpdatedAt, queryClient, id]);
+  // A finished draft brings new AI scores and descriptions for the cards.
+  const draftState = project.data?.draftState;
+  useEffect(() => {
+    if (draftState === 'done') void queryClient.invalidateQueries({ queryKey: ['project', id, 'media'] });
+  }, [draftState, queryClient, id]);
 
   return (
     <main className="mx-auto max-w-6xl p-8">
@@ -95,6 +109,16 @@ function MediaGrid({ items, onChange }: { items: Media[]; onChange: () => Promis
   );
 }
 
+function AnalysisBadge({ analysis }: { analysis: MediaAnalysis }) {
+  const label = !analysis.usable ? 'AI 不建議使用' : analysis.duplicateOf ? `AI ${analysis.score} 分・重複` : `AI ${analysis.score} 分`;
+  const tone = analysis.usable && !analysis.duplicateOf ? 'bg-slate-900/80 text-white' : 'bg-amber-100/95 text-amber-900';
+  return (
+    <span className={`absolute top-2 right-2 rounded px-1.5 py-0.5 text-xs font-semibold tabular-nums ${tone}`} data-testid="ai-score">
+      {label}
+    </span>
+  );
+}
+
 function MediaCard({ item, onChange }: { item: Media; onChange: () => Promise<unknown> }) {
   const url = `/api/media/${item.id}`;
   const exclude = useMutation({
@@ -119,12 +143,18 @@ function MediaCard({ item, onChange }: { item: Media; onChange: () => Promise<un
         {item.livePhoto && (
           <span className="absolute top-2 left-2 rounded bg-white/90 px-1.5 py-0.5 text-xs font-semibold">LIVE</span>
         )}
+        {item.analysis && <AnalysisBadge analysis={item.analysis} />}
       </div>
       <div className="space-y-1 p-3 text-sm">
         <div className="truncate font-medium" title={item.filename}>
           {item.filename}
         </div>
         <div className="text-slate-600 tabular-nums">{formatCapturedAt(item.capturedAt)}</div>
+        {item.analysis?.description && (
+          <p className="line-clamp-2 text-slate-700" title={item.analysis.description} data-testid="ai-description">
+            {item.analysis.description}
+          </p>
+        )}
         {item.status === 'failed' && (
           <>
             <p className="text-red-700">{item.error}</p>
