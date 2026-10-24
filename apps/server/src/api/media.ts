@@ -15,10 +15,9 @@ import { mediaPaths } from '../storage/paths';
 import { MAX_UPLOAD_BYTES, receiveFile } from '../storage/upload';
 import type { ApiDeps } from './deps';
 import { mediaDto, visibleMedia } from './dto';
-import { IdParams } from './projects';
+import { assertProjectIdle, busy, IdParams } from './projects';
 
 const notFound = () => new HttpError(404, 'NOT_FOUND', '找不到素材');
-const busy = () => new HttpError(409, 'BUSY', '處理中，請稍後再刪');
 
 type MediaRow = typeof media.$inferSelect;
 
@@ -178,6 +177,7 @@ export const mediaRoutes: FastifyPluginAsyncZod<ApiDeps> = async (app, { db, dat
               .where(and(eq(media.projectId, row.projectId), eq(media.contentIdentifier, row.contentIdentifier)))
               .for('update');
       if (group.some((m) => isMediaBusy(m.status))) throw busy();
+      await assertProjectIdle(tx, row.projectId);
       await tx.delete(media).where(inArray(media.id, group.map((m) => m.id)));
       return group;
     });

@@ -5,6 +5,7 @@ import { loadConfig } from './config';
 import { createDb } from './db/client';
 import { createHealthChecks } from './health';
 import { analyzeBeatsWithUv, createMusicQueue } from './jobs/analyzeMusic';
+import { createDraftQueue } from './jobs/draft';
 import { createIngestQueue } from './jobs/ingest';
 import { freeBytes } from './storage/disk';
 
@@ -14,6 +15,7 @@ const db = createDb(sql);
 const app = buildApp({ checks: createHealthChecks(config, sql), logger: true });
 const ingest = createIngestQueue({ db, dataDir: config.dataDir, defaultTz: config.defaultTz, log: app.log });
 const music = createMusicQueue({ db, dataDir: config.dataDir, analyzeBeats: analyzeBeatsWithUv, log: app.log });
+const draft = createDraftQueue({ db, log: app.log });
 
 await app.register(apiRoutes, {
   db,
@@ -21,14 +23,16 @@ await app.register(apiRoutes, {
   freeBytes: () => freeBytes(config.dataDir, config.hostDrive),
   enqueueIngest: ingest.enqueue,
   enqueueAnalyze: music.enqueue,
+  enqueueDraft: draft.enqueue,
 });
 app.addHook('onClose', async () => {
-  await Promise.all([ingest.close(), music.close()]);
+  await Promise.all([ingest.close(), music.close(), draft.close()]);
   await sql.end();
 });
 
 await ingest.recover();
 await music.recover();
+await draft.recover();
 await app.listen({ host: '127.0.0.1', port: config.port });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

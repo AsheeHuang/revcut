@@ -90,5 +90,5 @@ const ProjectTitle = z.string().trim().min(1, '請輸入專案名稱').max(100);
 export const CreateProjectBody = z.object({ title: ProjectTitle });
 export type CreateProjectBody = z.infer<typeof CreateProjectBody>;
 
-export const PatchProjectBody = z.object({ title: ProjectTitle.optional() });
+export const PatchProjectBody = z.object({ title: ProjectTitle.optional(), currentTimelineId: z.uuid().optional() });
 export type PatchProjectBody = z.infer<typeof PatchProjectBody>;

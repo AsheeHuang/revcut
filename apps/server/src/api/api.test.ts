@@ -45,6 +45,7 @@ beforeEach(async () => {
     freeBytes: async () => free,
     enqueueIngest: (id) => enqueued.push(id),
     enqueueAnalyze: () => {},
+    enqueueDraft: () => {},
   });
   return async () => {
     await app.close();

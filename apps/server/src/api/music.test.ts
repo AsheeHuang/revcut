@@ -42,6 +42,7 @@ async function start(enqueueAnalyze: (id: string) => void) {
     freeBytes: async () => free,
     enqueueIngest: () => {},
     enqueueAnalyze,
+    enqueueDraft: () => {},
   });
 }
 
