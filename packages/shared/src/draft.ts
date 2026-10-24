@@ -14,7 +14,9 @@ export type DraftTransition = {
   [From in DraftState]: { from: From; to: (typeof DRAFT_STATE_TRANSITIONS)[From][number] };
 }[DraftState];
 
-export function isDraftBusy(state: DraftState): boolean {
+export type BusyDraftState = Extract<DraftState, 'queued' | 'analyzing' | 'planning'>;
+
+export function isDraftBusy(state: DraftState): state is BusyDraftState {
   return state === 'queued' || state === 'analyzing' || state === 'planning';
 }
 

@@ -1,8 +1,9 @@
-import { extensionOf, isMediaBusy, kindFromExtension, MEDIA_EXTENSIONS, Media, Project } from '@revcut/shared';
+import { extensionOf, isDraftBusy, isMediaBusy, kindFromExtension, MEDIA_EXTENSIONS, Media, Project } from '@revcut/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router';
 import { useEffect } from 'react';
 import { api, messageOf, noContent } from './api';
+import { DraftPanel } from './DraftPanel';
 import { UploadPanel } from './UploadPanel';
 import type { UploadTarget } from './useUploads';
 
@@ -30,6 +31,7 @@ export function ProjectPage() {
   const project = useQuery({
     queryKey: ['project', id],
     queryFn: () => api(Project, `/api/projects/${id}`),
+    refetchInterval: (query) => (query.state.data && isDraftBusy(query.state.data.draftState) ? POLL_MS : false),
   });
   const media = useQuery({
     queryKey: ['project', id, 'media'],
@@ -48,13 +50,21 @@ export function ProjectPage() {
       </Link>
       {project.isError && <p className="mt-4 text-red-700">無法載入專案：{messageOf(project.error)}</p>}
       {project.data && (
-        <header className="mt-2 mb-6">
-          <h1 className="text-2xl font-semibold">{project.data.title}</h1>
-          <p className="text-sm text-slate-600">
-            {project.data.dateRange ? `${project.data.dateRange.from} – ${project.data.dateRange.to}` : '還沒有素材'}
-          </p>
+        <header className="mt-2 mb-6 flex items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold">{project.data.title}</h1>
+            <p className="text-sm text-slate-600">
+              {project.data.dateRange ? `${project.data.dateRange.from} – ${project.data.dateRange.to}` : '還沒有素材'}
+            </p>
+          </div>
+          {project.data.currentTimelineId && (
+            <Link to={`/projects/${id}/edit`} className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50">
+              開啟編輯器 →
+            </Link>
+          )}
         </header>
       )}
+      {project.data && <DraftPanel project={project.data} />}
       <UploadPanel
         target={mediaTarget(id)}
         accept={ACCEPT}
