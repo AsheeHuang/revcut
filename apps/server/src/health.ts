@@ -106,8 +106,13 @@ export function createHealthChecks(config: Config, sql: Sql): HealthChecks {
       required: true,
       timeoutMs: 5000,
       run: async (signal) => {
-        await toolOutput('heif-convert', ['-h'], '請安裝：sudo apt install libheif-examples', signal);
-        return { ok: true, detail: '已安裝' };
+        // heif-convert 1.12 has no version or help flag that exits 0, so look it up on PATH instead.
+        try {
+          const { stdout } = await runProcess('which', ['heif-convert'], { signal });
+          return { ok: true, detail: stdout.trim() };
+        } catch {
+          return { ok: false, detail: '找不到 heif-convert，請安裝：sudo apt install libheif-examples' };
+        }
       },
     },
     analyzer: {
