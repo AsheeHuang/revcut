@@ -34,6 +34,11 @@ describe('costUsd', () => {
 });
 
 describe('estimateUsd', () => {
+  it('prices the prompt as a cache write for GPT-6 Astra, which writes one on every request, and as plain input for Claude', () => {
+    expect(estimateUsd('gpt-6-astra', 10_000, 9)! - estimateUsd('gpt-6-astra', 0, 9)!).toBeCloseTo((10_000 * 12.5) / 1e6, 10);
+    expect(estimateUsd('claude-opus-5-5', 10_000, 9)! - estimateUsd('claude-opus-5-5', 0, 9)!).toBeCloseTo((10_000 * 4) / 1e6, 10);
+  });
+
   it('adds the expected output of thinking plus one verdict per media to the input', () => {
     const inputOnly = costUsd('claude-opus-5-5', usage(20_000, 0))!;
     const estimate = estimateUsd('claude-opus-5-5', 20_000, 9)!;

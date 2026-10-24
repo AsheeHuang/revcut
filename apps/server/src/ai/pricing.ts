@@ -7,6 +7,8 @@ type Price = {
   cacheWrite: number;
   output: number;
   longContext?: { aboveInputTokens: number; inputMultiplier: number; outputMultiplier: number };
+  // OpenAI caches the prompt of every request by default and bills the write.
+  writesCache?: boolean;
 };
 
 // Anthropic: claude-api skill model table (2026-10-06); 5-minute cache writes are 1.25x input.
@@ -22,6 +24,7 @@ const PRICES: Record<string, Price> = {
     cacheWrite: 12.5,
     output: 50,
     longContext: { aboveInputTokens: 272_000, inputMultiplier: 2, outputMultiplier: 1.5 },
+    writesCache: true,
   },
 };
 
@@ -38,11 +41,12 @@ export function costUsd(model: string, usage: Usage): number | null {
   return (input + output) / 1e6;
 }
 
-// Thinking plus one JSON verdict per media; checked against the live runs recorded in SPEC §7.5.
-const OUTPUT_TOKENS_BASE = 3000;
-const OUTPUT_TOKENS_PER_MEDIA = 200;
+// Thinking plus one JSON verdict per media, about twice the 1,216 tokens GPT-6 Astra wrote for 9 media (SPEC §7.5).
+const OUTPUT_TOKENS_BASE = 1000;
+const OUTPUT_TOKENS_PER_MEDIA = 150;
 
 export function estimateUsd(model: string, inputTokens: number, mediaCount: number): number | null {
   const outputTokens = OUTPUT_TOKENS_BASE + OUTPUT_TOKENS_PER_MEDIA * mediaCount;
-  return costUsd(model, { inputTokens, outputTokens, cacheReadTokens: 0, cacheWriteTokens: 0 });
+  const cacheWriteTokens = priceOf(model)?.writesCache ? inputTokens : 0;
+  return costUsd(model, { inputTokens, outputTokens, cacheReadTokens: 0, cacheWriteTokens });
 }
