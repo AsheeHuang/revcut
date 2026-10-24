@@ -1,14 +1,17 @@
 import { Player, type PlayerRef } from '@remotion/player';
 import { type CompositionProps, IgSafeZoneMask, RecapVideo, recapDurationInFrames } from '@revcut/composition';
 import {
+  type AiProvider,
   computeTiming,
   FPS,
   framesToSec,
   HEIGHT,
+  isDraftBusy,
   isRenderBusy,
   Project,
   Render,
   StartRenderResponse,
+  type Timeline,
   type Timing,
   TimelineDetail,
   TimelineSummary,
@@ -19,6 +22,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { api, messageOf } from './api';
+import { AiChoice, DraftProgress, useAiChoice } from './DraftControls';
 
 const POLL_MS = 2000;
 const PLAYER_HEIGHT = 720;
@@ -43,12 +47,20 @@ function previewProps({ data, assets }: TimelineDetail): CompositionProps | null
 export function EditorPage() {
   const { id = '' } = useParams();
   const queryClient = useQueryClient();
-  const project = useQuery({ queryKey: ['project', id], queryFn: () => api(Project, `/api/projects/${id}`) });
+  const project = useQuery({
+    queryKey: ['project', id],
+    queryFn: () => api(Project, `/api/projects/${id}`),
+    refetchInterval: (query) => (query.state.data && isDraftBusy(query.state.data.draftState) ? POLL_MS : false),
+  });
   const versions = useQuery({
     queryKey: ['project', id, 'timelines'],
     queryFn: () => api(TimelineSummary.array(), `/api/projects/${id}/timelines`),
   });
   const timelineId = project.data?.currentTimelineId;
+  // AI 重排 makes a new version and switches to it.
+  useEffect(() => {
+    if (timelineId) void queryClient.invalidateQueries({ queryKey: ['project', id, 'timelines'] });
+  }, [timelineId, queryClient, id]);
   const timeline = useQuery({
     queryKey: ['timeline', timelineId],
     queryFn: () => api(TimelineDetail, `/api/timelines/${timelineId}`),
@@ -152,6 +164,7 @@ export function EditorPage() {
             </div>
             <div className="space-y-6">
               <ValidationPanel errors={detail.validation.errors} warnings={detail.validation.warnings} onSelect={seekToClip} />
+              {project.data && <RedraftPanel project={project.data} timeline={detail.data} />}
               <ExportPanel
                 projectId={id}
                 timelineId={detail.id}
@@ -209,6 +222,44 @@ function ValidationPanel({
         ))}
       </ul>
       {errors.length > 0 && <p className="mt-2 text-xs text-slate-500">有錯誤時不能匯出；警告不影響匯出。</p>}
+    </section>
+  );
+}
+
+// SPEC §11.3: a new seed on the same song and start, as a new version; the current one keeps its edits.
+function RedraftPanel({ project, timeline }: { project: Project; timeline: Timeline }) {
+  const queryClient = useQueryClient();
+  const choice = useAiChoice(project);
+  const redraft = useMutation({
+    mutationFn: (provider: AiProvider) =>
+      api(Project, `/api/projects/${project.id}/draft`, {
+        method: 'POST',
+        body: { trackId: timeline.music.trackId, startBeat: timeline.music.startBeat, provider },
+      }),
+    onSuccess: (updated) => queryClient.setQueryData(['project', project.id], updated),
+  });
+  const running = isDraftBusy(project.draftState) || redraft.isPending;
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-4" data-testid="redraft-panel">
+      <div className="flex items-center gap-4">
+        <h2 className="font-semibold">AI 重排</h2>
+        <button
+          type="button"
+          onClick={() => choice.provider && redraft.mutate(choice.provider)}
+          disabled={running || !choice.provider}
+          className="rounded bg-slate-900 px-4 py-1.5 text-sm text-white hover:bg-slate-700 disabled:opacity-50"
+        >
+          AI 重排
+        </button>
+        <DraftProgress state={project.draftState} />
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+        <AiChoice choice={choice} disabled={running} />
+      </div>
+      <p className="mt-2 text-xs text-slate-500">用新的亂數排出新版本，同一首歌、同一個起點；目前版本的修改會留著。</p>
+      {project.draftState === 'failed' && !redraft.isPending && <p className="mt-2 text-sm text-red-700">重排失敗：{project.draftError}</p>}
+      {redraft.isError && <p className="mt-2 text-sm text-red-700">{messageOf(redraft.error)}</p>}
     </section>
   );
 }
