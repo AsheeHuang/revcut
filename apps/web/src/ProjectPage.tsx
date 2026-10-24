@@ -1,6 +1,7 @@
 import { extensionOf, isMediaBusy, kindFromExtension, MEDIA_EXTENSIONS, Media, Project } from '@revcut/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router';
+import { useEffect } from 'react';
 import { api, messageOf, noContent } from './api';
 import { UploadPanel } from './UploadPanel';
 import type { UploadTarget } from './useUploads';
@@ -35,6 +36,10 @@ export function ProjectPage() {
     queryFn: () => api(Media.array(), `/api/projects/${id}/media`),
     refetchInterval: (query) => (query.state.data?.some((m) => isMediaBusy(m.status)) ? POLL_MS : false),
   });
+  // The header's date range and counts come from the project query, which nothing else refreshes after ingest.
+  useEffect(() => {
+    if (media.dataUpdatedAt) void queryClient.invalidateQueries({ queryKey: ['project', id], exact: true });
+  }, [media.dataUpdatedAt, queryClient, id]);
 
   return (
     <main className="mx-auto max-w-6xl p-8">
