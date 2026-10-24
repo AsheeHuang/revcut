@@ -8,6 +8,9 @@ import type { ClipSource, CompositionProps } from './props';
 
 const DATE_FONT = '500 36px "Noto Sans TC"';
 const PREMOUNT_FRAMES = FPS;
+// Chrome seeks a <video> in whole microseconds, so a target exactly on a frame boundary can show
+// the frame before. Sampling a quarter frame in keeps the preview and the renderer on the same frame.
+const SAMPLE_OFFSET_FRAMES = 0.25;
 
 const placed = ({ left, top, width, height }: Rect): CSSProperties => ({
   position: 'absolute',
@@ -46,7 +49,7 @@ function ClipMedia({
   return (
     <OffthreadVideo
       src={source.src}
-      trimBefore={source.startFromSec * FPS}
+      trimBefore={source.startFromSec * FPS + SAMPLE_OFFSET_FRAMES}
       volume={volume}
       pauseWhenBuffering
       style={placed(coverRect(source.width, source.height, clip.crop))}
