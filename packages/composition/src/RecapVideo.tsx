@@ -75,8 +75,6 @@ function DateOverlay({ text }: { text: string }) {
   );
 }
 
-// SPEC §9: hard cuts on the beat grid of timing.ts, music from frame f0, each clip's own sound
-// faded in and out, and the last fadeOutSec of the whole mix faded together.
 export function RecapVideo({ timeline, music, sources }: CompositionProps) {
   const dates = timeline.overlayEnabled ? timeline.clips.flatMap((clip) => clip.date ?? []) : [];
   useDateFont(dates.join('') || '0');

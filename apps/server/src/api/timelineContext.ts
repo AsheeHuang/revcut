@@ -5,7 +5,6 @@ import { media, musicTracks } from '../db/schema';
 
 export type Song = { id: string; beats: number[]; downbeatIndices: number[]; durationSec: number | null };
 
-// The song and the project's media a timeline points at, as they are now, and the validation view of them.
 export async function loadTimelineContext(db: Db, projectId: string, data: Timeline) {
   const [track] = await db.select().from(musicTracks).where(eq(musicTracks.id, data.music.trackId));
   const ids = [...new Set(data.clips.map((clip) => clip.mediaId))];
