@@ -26,6 +26,12 @@ describe('parseConfig', () => {
     expect(() => parseConfig({})).toThrow(/DATABASE_URL/);
   });
 
+  it('defaults DEFAULT_TZ to Asia/Taipei and rejects an unknown zone', () => {
+    expect(parseConfig(env).defaultTz).toBe('Asia/Taipei');
+    expect(parseConfig({ ...env, DEFAULT_TZ: 'Asia/Tokyo' }).defaultTz).toBe('Asia/Tokyo');
+    expect(() => parseConfig({ ...env, DEFAULT_TZ: 'Mars/Olympus' })).toThrow(/DEFAULT_TZ/);
+  });
+
   it('treats an empty API key as not configured', () => {
     expect(parseConfig({ ...env, ANTHROPIC_API_KEY: '' }).anthropicApiKey).toBeUndefined();
   });

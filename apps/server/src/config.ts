@@ -8,6 +8,15 @@ const optionalKey = z
   .optional()
   .transform((value) => value || undefined);
 
+function isTimeZone(zone: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const Env = z
   .object({
     DATABASE_URL: z.string({ error: '必須設定' }).min(1, '必須設定'),
@@ -19,6 +28,10 @@ const Env = z
       }),
     HOST_DRIVE: z.string().min(1).default('/mnt/c'),
     PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+    DEFAULT_TZ: z
+      .string()
+      .default('Asia/Taipei')
+      .refine(isTimeZone, { error: '不是有效的 IANA 時區' }),
     ANTHROPIC_API_KEY: optionalKey,
     OPENAI_API_KEY: optionalKey,
     GOOGLE_MAPS_API_KEY: optionalKey,
@@ -28,6 +41,7 @@ const Env = z
     dataDir: env.DATA_DIR || path.join(os.homedir(), '.revcut', 'data'),
     hostDrive: env.HOST_DRIVE,
     port: env.PORT,
+    defaultTz: env.DEFAULT_TZ,
     anthropicApiKey: env.ANTHROPIC_API_KEY,
     openaiApiKey: env.OPENAI_API_KEY,
     googleMapsApiKey: env.GOOGLE_MAPS_API_KEY,
