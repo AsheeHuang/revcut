@@ -1,9 +1,20 @@
-import { groupLivePhotos, isMediaBusy, type Media, type Project } from '@revcut/shared';
-import type { media, projects } from '../db/schema';
+import {
+  ENERGY_HOP_SEC,
+  type Energy,
+  groupLivePhotos,
+  isMediaBusy,
+  type Media,
+  type MusicTrack,
+  type MusicTrackDetail,
+  type Project,
+  suggestSection,
+} from '@revcut/shared';
+import type { media, musicTracks, projects } from '../db/schema';
 import { toOffsetIso } from '../media/metadata';
 
 type MediaRow = typeof media.$inferSelect;
 type ProjectRow = typeof projects.$inferSelect;
+type MusicRow = typeof musicTracks.$inferSelect;
 
 function toMediaRecord(row: MediaRow) {
   const ready = row.status === 'ready';
@@ -68,5 +79,29 @@ export function projectDto(row: ProjectRow, items: Media[]): Project {
       failed: count((item) => item.status === 'failed'),
       excluded: count((item) => item.excluded),
     },
+  };
+}
+
+export function musicDto(row: MusicRow): MusicTrack {
+  return {
+    id: row.id,
+    title: row.title,
+    artist: row.artist,
+    status: row.status,
+    error: row.error,
+    durationSec: row.durationSec,
+    bpm: row.bpm,
+    audioUrl: `/api/music/${row.id}/audio`,
+  };
+}
+
+export function musicDetailDto(row: MusicRow): MusicTrackDetail {
+  const { beats, downbeatIndices, energy } = row;
+  if (row.status !== 'ready' || !beats || !downbeatIndices || !energy) return { ...musicDto(row), analysis: null };
+  const energyCurve: Energy = { hopSec: ENERGY_HOP_SEC, values: energy };
+  const section = suggestSection(beats, downbeatIndices, energyCurve);
+  return {
+    ...musicDto(row),
+    analysis: { beats, downbeatIndices, energy: energyCurve, suggestedSection: section.ok ? section.section : null },
   };
 }

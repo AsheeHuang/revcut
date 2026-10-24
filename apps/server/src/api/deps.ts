@@ -5,4 +5,5 @@ export type ApiDeps = {
   dataDir: string;
   freeBytes: () => Promise<number>;
   enqueueIngest: (mediaId: string) => void;
+  enqueueAnalyze: (trackId: string) => void;
 };

@@ -20,6 +20,7 @@ await app.register(apiRoutes, {
   dataDir: config.dataDir,
   freeBytes: () => freeBytes(config.dataDir, config.hostDrive),
   enqueueIngest: ingest.enqueue,
+  enqueueAnalyze: music.enqueue,
 });
 app.addHook('onClose', async () => {
   await Promise.all([ingest.close(), music.close()]);
