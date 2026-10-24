@@ -78,11 +78,8 @@ export const media = pgTable(
     utcOffsetMin: smallint('utc_offset_min'),
     lat: doublePrecision('lat'),
     lng: doublePrecision('lng'),
-    placeLabel: text('place_label'),
-    placeLabelEdited: boolean('place_label_edited').notNull().default(false),
     excluded: boolean('excluded').notNull().default(false),
     contentIdentifier: text('content_identifier'),
-    transcribedAt: timestamp('transcribed_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -94,18 +91,6 @@ export const media = pgTable(
     index('media_project_id_content_identifier_idx').on(t.projectId, t.contentIdentifier),
   ],
 );
-
-export const speechSegments = pgTable('speech_segments', {
-  id: id(),
-  mediaId: uuid('media_id')
-    .notNull()
-    .references(() => media.id, { onDelete: 'cascade' }),
-  idx: smallint('idx').notNull(),
-  startSec: real('start_sec').notNull(),
-  endSec: real('end_sec').notNull(),
-  text: text('text').notNull(),
-  createdAt: createdAt(),
-});
 
 export const analysisRuns = pgTable(
   'analysis_runs',
@@ -145,7 +130,6 @@ export const mediaAnalysis = pgTable(
     score: smallint('score').notNull(),
     description: text('description').notNull(),
     moments: jsonb('moments').notNull(),
-    speechSegmentId: uuid('speech_segment_id').references(() => speechSegments.id, { onDelete: 'set null' }),
     duplicateOf: uuid('duplicate_of').references(() => media.id, { onDelete: 'set null' }),
     createdAt: createdAt(),
   },

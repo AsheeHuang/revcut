@@ -8,6 +8,20 @@
       "when": 1792842896845,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792845934083,
+      "tag": "0001_drop_place_and_speech",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792845983672,
+      "tag": "0002_drop_transcribing_state",
+      "breakpoints": true
     }
   ]
 }

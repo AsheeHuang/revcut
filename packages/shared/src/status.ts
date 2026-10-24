@@ -12,7 +12,7 @@ export const MUSIC_STATUSES = ['uploaded', 'analyzing', 'ready', 'failed'] as co
 export const MusicStatus = z.enum(MUSIC_STATUSES);
 export type MusicStatus = z.infer<typeof MusicStatus>;
 
-export const DRAFT_STATES = ['idle', 'queued', 'transcribing', 'analyzing', 'planning', 'done', 'failed'] as const;
+export const DRAFT_STATES = ['idle', 'queued', 'analyzing', 'planning', 'done', 'failed'] as const;
 export const DraftState = z.enum(DRAFT_STATES);
 export type DraftState = z.infer<typeof DraftState>;
 

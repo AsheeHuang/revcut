@@ -1,0 +1,2 @@
+ALTER TABLE "projects" DROP CONSTRAINT "projects_draft_state_check";--> statement-breakpoint
+ALTER TABLE "projects" ADD CONSTRAINT "projects_draft_state_check" CHECK ("projects"."draft_state" in ('idle', 'queued', 'analyzing', 'planning', 'done', 'failed'));
